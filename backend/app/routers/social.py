@@ -6,7 +6,7 @@ from ..models import (User, PartnerProfile, Favorite, Message, Notification, Blo
 from ..moderation import check_text
 from ..schemas import MessageIn, ReportIn, SosIn
 from ..security import current_user, rate_limit
-from ..services import partner_json, can_chat, is_blocked, notify, audit, blocked_ids
+from ..services import partner_json, can_chat, is_blocked, notify, audit, blocked_ids, cancel_booking
 
 router = APIRouter(prefix="/api", tags=["social"])
 REPORT_CATEGORIES = {"harassment", "sexual_solicitation", "scam_or_payment", "fake_profile",
@@ -138,7 +138,7 @@ def block(target_id: int, u: User = Depends(current_user), db: Session = Depends
     pair = or_(and_(Booking.customer_id == u.id, Booking.partner_id == target_id),
                and_(Booking.customer_id == target_id, Booking.partner_id == u.id))
     for b in db.query(Booking).filter(pair, Booking.status.in_(("requested", "accepted"))).all():
-        b.status, b.status_reason = "cancelled", "Cancelled because a user was blocked"
+        cancel_booking(db, b, "Cancelled because a user was blocked", 100)
     db.query(Favorite).filter(or_(and_(Favorite.user_id == u.id, Favorite.partner_id == target_id),
                                   and_(Favorite.user_id == target_id, Favorite.partner_id == u.id))).delete()
     db.commit()

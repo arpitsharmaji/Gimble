@@ -202,6 +202,8 @@ def test_overlap_review_and_completion(client, customer, partner):
     ok = client.patch(f"/api/bookings/{r1['id']}", json={"status": "accepted"}, headers=partner)
     clash = client.patch(f"/api/bookings/{r2['id']}", json={"status": "accepted"}, headers=partner)
     assert ok.status_code == 200 and clash.status_code == 409  # partner can't double-book
+    # completion needs payment: customer pays after acceptance
+    assert client.post(f"/api/bookings/{r1['id']}/demo-pay", headers=customer).status_code == 200
     # simulate the plan having started, then complete + review
     with SessionLocal() as db:
         b = db.get(Booking, r1["id"]); b.scheduled_at = datetime.utcnow() - timedelta(hours=2); db.commit()

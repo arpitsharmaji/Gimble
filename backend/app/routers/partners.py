@@ -7,7 +7,7 @@ from ..config import settings, ACTIVITY_SUGGESTIONS
 from ..db import get_db
 from ..models import User, PartnerProfile, Review, utcnow
 from ..moderation import check_text
-from ..schemas import ProfileIn, AvailabilityIn
+from ..schemas import ProfileIn, AvailabilityIn, ScheduleIn
 from ..security import current_user, optional_user
 from ..services import partner_json, blocked_ids, audit, notify
 
@@ -35,7 +35,9 @@ def _own_profile(db: Session, u: User) -> PartnerProfile:
 def meta():
     return {"activity_suggestions": ACTIVITY_SUGGESTIONS, "min_rate": MIN_RATE, "max_rate": MAX_RATE,
             "razorpay": settings.razorpay_enabled, "demo_payments": settings.DEMO_PAYMENTS_ENABLED,
-            "demo_accounts": settings.SEED_DEMO}
+            "demo_accounts": settings.SEED_DEMO,
+            "platform_fee_percent": settings.PLATFORM_FEE_PERCENT, "min_payout_inr": settings.MIN_PAYOUT_INR,
+            "payout_hold_hours": settings.PAYOUT_HOLD_HOURS}
 
 
 @router.get("/cities")
@@ -108,7 +110,7 @@ def partner_reviews(partner_id: int, db: Session = Depends(get_db)):
     out = []
     for r in rows:
         c = db.get(User, r.customer_id)
-        out.append({"rating": r.rating, "comment": r.comment, "created_at": r.created_at.isoformat() + "Z",
+        out.append({"booking_id": r.booking_id, "partner_reply": r.partner_reply, "rating": r.rating, "comment": r.comment, "created_at": r.created_at.isoformat() + "Z",
                     "reviewer": (c.name.split()[0] if c and c.active else "Member")})
     return out
 
@@ -223,3 +225,23 @@ async def upload_photo(file: UploadFile = File(...), u: User = Depends(current_u
     name = f"u{u.id}_{secrets.token_hex(8)}.jpg"
     img.save(settings.UPLOAD_DIR / name, "JPEG", quality=85, optimize=True)
     return {"url": f"/uploads/{name}"}
+
+
+DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+_HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+@router.put("/partner/schedule")
+def set_schedule(x: ScheduleIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Weekly hours in IST. Days left out are unavailable; an empty schedule means 'any time'."""
+    p = _own_profile(db, _partner_user(u))
+    clean = {}
+    for day, win in x.days.items():
+        if day not in DAYS or len(win) != 2 or not all(_HHMM.match(t) for t in win):
+            raise HTTPException(400, "Use days mon-sun and times like 10:00")
+        if (int(win[1][:2]) * 60 + int(win[1][3:])) - (int(win[0][:2]) * 60 + int(win[0][3:])) < 60:
+            raise HTTPException(400, f"{day.upper()}: the window must be at least 1 hour")
+        clean[day] = win
+    p.schedule_json = json.dumps(clean)
+    db.commit()
+    return {"schedule": clean}

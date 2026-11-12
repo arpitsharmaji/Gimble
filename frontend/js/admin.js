@@ -2,7 +2,7 @@ import { html, api, state, $, $$, toast, actions, submits, inr, fmtDT, ago, phot
 import { CATEGORIES } from './safety.js';
 
 let tab = 'overview';
-const TABS = [['overview', 'Overview'], ['approvals', 'Approvals'], ['reports', 'Safety reports'], ['users', 'Users'], ['bookings', 'Bookings'], ['audit', 'Audit log']];
+const TABS = [['overview', 'Overview'], ['approvals', 'Approvals'], ['kyc', 'ID checks'], ['payouts', 'Payouts'], ['reports', 'Safety reports'], ['support', 'Support'], ['users', 'Users'], ['bookings', 'Bookings'], ['audit', 'Audit log']];
 
 export async function adminPage(root) {
   if (!state.me || state.me.role !== 'admin') { root.innerHTML = '<div class="page narrow center"><h1>Admins only</h1><p class="muted">Log in with an administrator account.</p><button class="btn primary" data-action="auth-login">Log in</button></div>'; return; }
@@ -16,9 +16,12 @@ async function draw() {
   try {
     const s = await api('/admin/overview');
     const set = (k, n) => { const e = $('#n-' + k); if (e) e.textContent = n ? ` ${n}` : ''; };
-    set('approvals', s.pending_partners); set('reports', s.open_reports);
-    if (tab === 'overview') body.innerHTML = html`<div class="stats">${[['Users', s.users], ['Customers', s.customers], ['Live partners', s.live_partners], ['Pending approvals', s.pending_partners], ['Active memberships', s.active_memberships], ['Bookings', s.bookings], ['Completed', s.completed_bookings], ['Booked value', inr(s.gross_completed_inr)], ['Open reports', s.open_reports], ['Critical reports', s.critical_reports]].map(([l, v]) => html`<div class="${l === 'Critical reports' && v ? 'alert' : ''}"><b>${v}</b><span>${l}</span></div>`)}</div>`.s;
+    set('approvals', s.pending_partners); set('reports', s.open_reports); set('kyc', s.pending_kyc); set('payouts', s.pending_payouts); set('support', s.open_tickets);
+    if (tab === 'overview') body.innerHTML = html`<div class="stats">${[['Users', s.users], ['Customers', s.customers], ['Live partners', s.live_partners], ['Pending approvals', s.pending_partners], ['Active memberships', s.active_memberships], ['Bookings', s.bookings], ['Completed', s.completed_bookings], ['Booked value', inr(s.gross_completed_inr)], ['Open reports', s.open_reports], ['Critical reports', s.critical_reports], ['Customer money held/paid (net)', inr(s.paid_in_inr)], ['PairUp fees (completed)', inr(s.platform_fees_inr)], ['Payouts waiting', `${s.pending_payouts} (${inr(s.pending_payout_inr)})`], ['ID checks waiting', s.pending_kyc], ['Open support tickets', s.open_tickets], ['Refunds to retry', s.refund_pending]].map(([l, v]) => html`<div class="${l === 'Critical reports' && v ? 'alert' : ''}"><b>${v}</b><span>${l}</span></div>`)}</div>`.s;
     if (tab === 'approvals') await approvals(body);
+    if (tab === 'kyc') await kycTab(body);
+    if (tab === 'payouts') await payoutsTab(body);
+    if (tab === 'support') await supportTab(body);
     if (tab === 'reports') await reports(body);
     if (tab === 'users') await users(body);
     if (tab === 'bookings') await bookings(body);
@@ -62,9 +65,47 @@ actions['u-un'] = async el => { await api(`/admin/users/${el.dataset.id}/suspend
 
 async function bookings(body) {
   const rows = await api('/admin/bookings');
-  body.innerHTML = rows.length ? html`<div class="table-wrap"><table><thead><tr><th>#</th><th>Customer</th><th>Partner</th><th>Activity</th><th>When</th><th>Price</th><th>Status</th></tr></thead><tbody>${rows.map(b => html`<tr><td>${b.id}</td><td>${b.customer_name}</td><td>${b.partner_name}</td><td>${b.activity}</td><td>${fmtDT(b.scheduled_at)}</td><td>${inr(b.price)}</td><td><span class="pill ${b.status}">${b.status}</span></td></tr>`)}</tbody></table></div>`.s : '<div class="empty"><p>No bookings yet.</p></div>';
+  body.innerHTML = rows.length ? html`<div class="table-wrap"><table><thead><tr><th>#</th><th>Customer</th><th>Partner</th><th>Activity</th><th>When</th><th>Price</th><th>Status</th><th>Payment</th></tr></thead><tbody>${rows.map(b => html`<tr><td>${b.id}</td><td>${b.customer_name}</td><td>${b.partner_name}</td><td>${b.activity}</td><td>${fmtDT(b.scheduled_at)}</td><td>${inr(b.price)}</td><td><span class="pill ${b.status}">${b.status}</span></td><td>${b.payment_status}${b.payment_status === 'refund_pending' ? html` <button class="btn ghost sm" data-action="retry-refund" data-id="${b.id}">Retry refund</button>` : ''}</td></tr>`)}</tbody></table></div>`.s : '<div class="empty"><p>No bookings yet.</p></div>';
 }
 async function auditTab(body) {
   const rows = await api('/admin/audit');
   body.innerHTML = html`<div class="table-wrap"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead><tbody>${rows.map(e => html`<tr><td>${ago(e.created_at)}</td><td>${e.actor_id ?? 'system'}</td><td>${e.action}</td><td>${e.target}</td><td>${e.detail}</td></tr>`)}</tbody></table></div>`.s;
 }
+
+actions['retry-refund'] = el => busy(el, async () => { const r = await api(`/admin/bookings/${el.dataset.id}/retry-refund`, { method: 'POST' }); toast('Refund status: ' + r.payment_status, 'ok'); draw(); });
+
+// ---------- ID checks ----------
+async function kycTab(body) {
+  const rows = await api('/admin/kyc');
+  body.innerHTML = rows.length ? rows.map(k => html`<div class="item"><div class="between"><b>${k.name} <small class="muted">${k.email}</small></b><span class="muted small">${ago(k.created_at)} · ${k.id_type}</span></div>
+    <div class="row wrap"><button class="btn ghost sm" data-action="kyc-show" data-id="${k.id}" data-which="id">Show ID</button><button class="btn ghost sm" data-action="kyc-show" data-id="${k.id}" data-which="selfie">Show selfie</button></div>
+    <div class="kyc-imgs" id="kyc-${k.id}"></div>
+    <p class="muted small">Check: the photo matches the profile, ID is genuine and unexpired, name is consistent, age 18+. Files are deleted when you decide.</p>
+    <div class="row wrap"><button class="btn primary sm" data-action="kyc-yes" data-id="${k.id}">Approve</button><button class="btn danger sm" data-action="kyc-no" data-id="${k.id}">Reject…</button></div></div>`).join('') : '<div class="empty"><p>No ID checks waiting.</p></div>';
+}
+actions['kyc-show'] = async el => {
+  const res = await fetch(`/api/admin/kyc/${el.dataset.id}/file/${el.dataset.which}`, { headers: { Authorization: 'Bearer ' + state.token } });
+  if (!res.ok) return toast('File not available.', 'error');
+  const url = URL.createObjectURL(await res.blob());
+  const box = $('#kyc-' + el.dataset.id); const img = document.createElement('img'); img.src = url; img.alt = el.dataset.which; box.append(img);
+};
+actions['kyc-yes'] = el => busy(el, async () => { await api(`/admin/kyc/${el.dataset.id}`, { method: 'PATCH', body: { approved: true } }); toast('Verified.', 'ok'); draw(); });
+actions['kyc-no'] = async el => { const r = await askText({ title: 'Reject ID check', label: 'Reason (shown to the partner)', required: true, confirm: 'Reject', danger: true, placeholder: 'e.g. Selfie is blurry - please retake' }); if (r === null) return; await api(`/admin/kyc/${el.dataset.id}`, { method: 'PATCH', body: { approved: false, reason: r } }); toast('Rejected.', 'ok'); draw(); };
+
+// ---------- payouts ----------
+async function payoutsTab(body) {
+  const rows = await api('/admin/payouts');
+  body.innerHTML = (rows.length ? html`<p class="muted small">Send each payout by UPI from your business account, then record the transaction reference (UTR). Rejecting returns the money to the partner's wallet.</p>${rows.map(p => html`<div class="item"><div class="between"><b>${inr(p.amount)} → ${p.name}</b><span class="muted small">${ago(p.created_at)}</span></div><p>UPI: <code>${p.upi}</code> ${p.account_name ? ` (${p.account_name})` : ''}</p>
+    <div class="row wrap"><button class="btn primary sm" data-action="po-paid" data-id="${p.id}">Mark paid…</button><button class="btn danger sm" data-action="po-no" data-id="${p.id}">Reject…</button></div></div>`)}` : html`<div class="empty"><p>No payouts waiting.</p></div>`).s;
+}
+actions['po-paid'] = async el => { const r = await askText({ title: 'Record payout', label: 'UPI / bank transaction reference (UTR)', required: true, confirm: 'Mark as paid' }); if (r === null) return; await api(`/admin/payouts/${el.dataset.id}`, { method: 'PATCH', body: { paid: true, reference: r } }); toast('Payout recorded.', 'ok'); draw(); };
+actions['po-no'] = async el => { const r = await askText({ title: 'Reject payout', label: 'Reason (shown to the partner)', required: true, confirm: 'Reject', danger: true }); if (r === null) return; await api(`/admin/payouts/${el.dataset.id}`, { method: 'PATCH', body: { paid: false, reason: r } }); toast('Rejected; funds returned.', 'ok'); draw(); };
+
+// ---------- support ----------
+async function supportTab(body) {
+  const rows = await api('/admin/support');
+  body.innerHTML = rows.length ? rows.map(t => html`<div class="item"><div class="between"><b>#${t.id} · ${t.category.replace('_', ' ')}</b><span class="muted small">${ago(t.created_at)}</span></div><p class="small">${t.name} &lt;${t.email}&gt;${t.user_id ? ` · user ${t.user_id}` : ''}</p><p>${t.message}</p>
+    <div class="row wrap"><button class="btn primary sm" data-action="tk-reply" data-id="${t.id}">Reply &amp; close</button><button class="btn ghost sm" data-action="tk-close" data-id="${t.id}">Close without reply</button></div></div>`).join('') : '<div class="empty"><p>No open tickets.</p></div>';
+}
+actions['tk-reply'] = async el => { const r = await askText({ title: 'Reply to customer', label: 'Your reply (emailed to them)', required: true, confirm: 'Send & close' }); if (r === null) return; await api(`/admin/support/${el.dataset.id}`, { method: 'PATCH', body: { reply: r, close: true } }); toast('Reply sent.', 'ok'); draw(); };
+actions['tk-close'] = async el => { await api(`/admin/support/${el.dataset.id}`, { method: 'PATCH', body: { close: true } }); draw(); };

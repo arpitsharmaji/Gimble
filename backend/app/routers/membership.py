@@ -1,13 +1,13 @@
-import json, logging
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..config import settings, PLANS
 from ..db import get_db
 from ..models import User, PaymentOrder
-from ..schemas import CheckoutIn, VerifyPaymentIn
+from ..schemas import CheckoutIn
 from ..security import current_user
 from .. import payments
-from ..services import active_membership, grant_membership, notify
+from ..services import active_membership, grant_membership
+import logging
 
 router = APIRouter(prefix="/api", tags=["membership"])
 log = logging.getLogger("pairup.pay")
@@ -43,7 +43,7 @@ def checkout(x: CheckoutIn, u: User = Depends(current_user), db: Session = Depen
         except Exception:
             log.exception("Razorpay order creation failed")
             raise HTTPException(502, "Payment provider is unavailable. Please try again shortly.")
-        db.add(PaymentOrder(user_id=u.id, plan=x.plan, amount_paise=amount_paise, provider_order_id=order["id"]))
+        db.add(PaymentOrder(user_id=u.id, plan=x.plan, kind="membership", amount_paise=amount_paise, provider_order_id=order["id"]))
         db.commit()
         return {"mode": "razorpay", "key_id": settings.RAZORPAY_KEY_ID, "order_id": order["id"],
                 "amount": amount_paise, "currency": "INR", "name": "PairUp", "description": f"{PLANS[x.plan]['label']} membership",
@@ -51,45 +51,6 @@ def checkout(x: CheckoutIn, u: User = Depends(current_user), db: Session = Depen
     if settings.DEMO_PAYMENTS_ENABLED:
         return {"mode": "demo", "amount": amount_paise}
     raise HTTPException(503, "Payments are not configured yet")
-
-
-def _activate_paid_order(db: Session, order: PaymentOrder, payment_id: str):
-    if order.status == "paid":  # idempotent: browser verify and webhook may both arrive
-        return
-    order.status, order.payment_id = "paid", payment_id
-    grant_membership(db, order.user_id, order.plan, f"razorpay:{payment_id}")
-    notify(db, order.user_id, "membership", "Your PairUp membership is active. You can now send booking requests.", "#/")
-
-
-@router.post("/membership/verify")
-def verify(x: VerifyPaymentIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
-    if not settings.razorpay_enabled:
-        raise HTTPException(503, "Payments are not configured")
-    order = db.query(PaymentOrder).filter_by(provider_order_id=x.razorpay_order_id, user_id=u.id).first()
-    if not order:
-        raise HTTPException(404, "Order not found")
-    if not payments.verify_payment_signature(x.razorpay_order_id, x.razorpay_payment_id, x.razorpay_signature):
-        order.status = "failed"
-        db.commit()
-        raise HTTPException(400, "Payment signature could not be verified")
-    _activate_paid_order(db, order, x.razorpay_payment_id)
-    db.commit()
-    return {"message": "Membership activated"}
-
-
-@router.post("/webhooks/razorpay")
-async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
-    body = await request.body()
-    if not payments.verify_webhook_signature(body, request.headers.get("x-razorpay-signature", "")):
-        raise HTTPException(400, "Invalid signature")
-    event = json.loads(body or b"{}")
-    if event.get("event") in ("payment.captured", "order.paid"):
-        pay = event.get("payload", {}).get("payment", {}).get("entity", {})
-        order = db.query(PaymentOrder).filter_by(provider_order_id=pay.get("order_id", "")).first()
-        if order and pay.get("amount") == order.amount_paise:
-            _activate_paid_order(db, order, pay.get("id", ""))
-            db.commit()
-    return {"ok": True}
 
 
 @router.post("/membership/demo-activate")

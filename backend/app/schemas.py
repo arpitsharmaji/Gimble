@@ -139,3 +139,49 @@ class AdminSuspendIn(BaseModel):
 class AdminResolveIn(BaseModel):
     resolution: str = Field(default="", max_length=300)
     suspend_target: bool = False
+
+
+class ReplyIn(BaseModel):
+    reply: str = Field(min_length=1, max_length=500)
+
+
+class ScheduleIn(BaseModel):
+    days: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class PayoutDetailsIn(BaseModel):
+    upi: str = Field(max_length=80)
+    name: str = Field(default="", max_length=80)
+
+
+class PayoutIn(BaseModel):
+    amount: int = Field(gt=0, le=1_000_000)
+
+
+class SupportIn(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    email: Email
+    category: str = "other"
+    message: str = Field(min_length=10, max_length=3000)
+
+
+class AdminPayoutIn(BaseModel):
+    paid: bool
+    reference: str = Field(default="", max_length=80)
+    reason: str = Field(default="", max_length=300)
+
+
+class AdminKycIn(BaseModel):
+    approved: bool
+    reason: str = Field(default="", max_length=300)
+
+
+class AdminTicketIn(BaseModel):
+    reply: str = Field(default="", max_length=3000)
+    close: bool = True
+
+
+class AdminAdjustIn(BaseModel):
+    user_id: int
+    amount: int
+    note: str = Field(min_length=3, max_length=200)

@@ -46,6 +46,9 @@ class PartnerProfile(Base):
     rating: Mapped[float] = mapped_column(Float, default=0)
     review_count: Mapped[int] = mapped_column(Integer, default=0)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    schedule_json: Mapped[str] = mapped_column(Text, default="{}")  # weekly hours in IST; empty = any time
+    payout_upi: Mapped[str] = mapped_column(String(80), default="")
+    payout_name: Mapped[str] = mapped_column(String(80), default="")
     user: Mapped[User] = relationship(back_populates="partner")
 
 
@@ -67,6 +70,8 @@ class PaymentOrder(Base):
     plan: Mapped[str] = mapped_column(String(30))
     amount_paise: Mapped[int] = mapped_column(Integer)
     provider: Mapped[str] = mapped_column(String(20), default="razorpay")
+    kind: Mapped[str] = mapped_column(String(12), default="membership")  # membership|booking
+    booking_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     provider_order_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     payment_id: Mapped[str] = mapped_column(String(80), default="")
     status: Mapped[str] = mapped_column(String(16), default="created")  # created|paid|failed
@@ -87,6 +92,11 @@ class Booking(Base):
     # requested|accepted|rejected|cancelled|completed|expired
     status: Mapped[str] = mapped_column(String(24), default="requested", index=True)
     status_reason: Mapped[str] = mapped_column(String(300), default="")
+    payment_status: Mapped[str] = mapped_column(String(20), default="unpaid")  # unpaid|paid|refunded|partially_refunded|refund_pending
+    paid_amount: Mapped[int] = mapped_column(Integer, default=0)
+    refund_amount: Mapped[int] = mapped_column(Integer, default=0)
+    platform_fee: Mapped[int] = mapped_column(Integer, default=0)
+    payment_id: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
@@ -107,6 +117,7 @@ class Review(Base):
     partner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     rating: Mapped[int] = mapped_column(Integer)
     comment: Mapped[str] = mapped_column(Text, default="")
+    partner_reply: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -173,4 +184,58 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(60))
     target: Mapped[str] = mapped_column(String(60), default="")
     detail: Mapped[str] = mapped_column(String(400), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class LedgerEntry(Base):
+    """Partner wallet ledger. Positive = money owed to the partner, negative = paid out / deducted."""
+    __tablename__ = "ledger"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    booking_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kind: Mapped[str] = mapped_column(String(24))  # earning|cancel_compensation|payout|payout_reversal|adjustment
+    amount: Mapped[int] = mapped_column(Integer)
+    available_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    note: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PayoutRequest(Base):
+    __tablename__ = "payout_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    amount: Mapped[int] = mapped_column(Integer)
+    upi: Mapped[str] = mapped_column(String(80))
+    account_name: Mapped[str] = mapped_column(String(80), default="")
+    status: Mapped[str] = mapped_column(String(12), default="requested", index=True)  # requested|paid|rejected
+    reference: Mapped[str] = mapped_column(String(80), default="")  # UTR / transaction id
+    reason: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class KycSubmission(Base):
+    """ID check. Files are deleted as soon as an admin decides; we keep only the outcome."""
+    __tablename__ = "kyc_submissions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    id_type: Mapped[str] = mapped_column(String(20))
+    id_file: Mapped[str] = mapped_column(String(80), default="")
+    selfie_file: Mapped[str] = mapped_column(String(80), default="")
+    status: Mapped[str] = mapped_column(String(12), default="pending", index=True)  # pending|approved|rejected
+    reason: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    email: Mapped[str] = mapped_column(String(180))
+    category: Mapped[str] = mapped_column(String(30), default="other")
+    message: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10), default="open", index=True)  # open|closed
+    admin_reply: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

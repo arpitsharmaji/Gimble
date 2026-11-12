@@ -31,3 +31,11 @@ def verify_webhook_signature(body: bytes, signature: str) -> bool:
         return False
     expected = hmac.new(settings.RAZORPAY_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature or "")
+
+
+def refund(payment_id: str, amount_paise: int) -> dict:
+    r = httpx.post(f"{API}/payments/{payment_id}/refund",
+                   auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET),
+                   json={"amount": amount_paise}, timeout=15)
+    r.raise_for_status()
+    return r.json()

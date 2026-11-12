@@ -173,3 +173,17 @@ export function requireLogin(fn, openAuth) {
   state.after = fn;
   openAuth('login');
 }
+
+// ---------- Razorpay checkout (shared by membership and booking payments) ----------
+const _scripts = {};
+export const loadScript = src => _scripts[src] ||= new Promise((res, rej) => {
+  const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load the payment window.')); document.head.append(s);
+});
+export async function openRazorpay(co, onSuccess) {
+  await loadScript('https://checkout.razorpay.com/v1/checkout.js');
+  const rzp = new window.Razorpay({ key: co.key_id, amount: co.amount, currency: co.currency, name: co.name, description: co.description,
+    order_id: co.order_id, prefill: co.prefill, theme: { color: '#ff648d' },
+    handler: async resp => { try { await onSuccess(resp); } catch (e) { toast(e.message + ' If you were charged, this will be confirmed automatically within a few minutes.', 'error'); } } });
+  rzp.on('payment.failed', () => toast('Payment failed. You have not been charged. Please try again.', 'error'));
+  rzp.open();
+}

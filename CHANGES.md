@@ -1,24 +1,29 @@
-# What was wrong with the uploaded version (and what changed)
+# PairUp v3 - what's new
 
-## Bugs / vulnerabilities found in your original code
-| # | Severity | Problem | Fix |
-|---|---|---|---|
-| 1 | **Critical** | **Path traversal**: `/%2e%2e/backend/.env` returned server files (secrets, source, even the database) | Frontend now served by Starlette `StaticFiles` (traversal-safe) |
-| 2 | **Critical** | Every demo login (customer, partner, **admin**) failed: `EmailStr` rejects `.local` domains | Own email validator; demo accounts work |
-| 3 | High | Public `/api/partners` leaked every partner's **email address** | Public serializer never includes email |
-| 4 | High | A customer could mark a *requested* booking "completed" (then review it); partners could re-accept closed bookings | Real state machine (see `routers/bookings.py`), tested |
-| 5 | High | Partners could be double-booked at the same time | Overlap check on accept; duplicate-request overlap check |
-| 6 | High | Partner `photo_url` accepted any URL (`javascript:`, tracking pixels) | Uploads only; re-encoded (EXIF/GPS stripped), validated |
-| 7 | Medium | Partner editor opened blank for approved/pending partners and wiped their data on save (no "get my profile" endpoint) | `GET /api/partner/profile`; tested |
-| 8 | Medium | Toggling availability sent a live profile back to review; "approved" and "verified" were the same flag | Separate availability endpoint; `verified` (ID check) separate from approval |
-| 9 | Medium | Like button toggled, so liking twice un-liked; favourites not loaded after login | Idempotent PUT/DELETE; loaded on login |
-| 10 | Medium | Service worker was cache-first → users stuck on old code forever | Network-first, versioned cache |
-| 11 | Medium | Chat labels always said "Partner"; no conversation list; no unread | Conversation list, unread counts, polling |
-| 12 | Low | Unknown `/api/*` routes returned HTML; deprecated startup hooks | JSON 404; lifespan |
+v2 fixed the bugs in the original upload (path traversal, broken demo logins, email leak, broken booking rules, etc.). v3 adds the product features a rent-a-companion marketplace needs to actually operate.
 
-## New features (vs. a bare HireAPartner-style marketplace)
-**Safety & trust (the main differentiator):** DOB-based 18+ gate, content moderation (blocks sexual/escort wording, UPI/advance-payment scams, phone numbers in public profiles), report + block, in-booking SOS (alerts admins; links to 112/1091/1930), auto-hide of profiles with 3+ independent reports, ID-verified badge, verified-only reviews, admin audit log, Safety Centre + Community Standards.
-**Marketplace:** search + filters (city, activity, price, rating, gender, availability), sort, pagination, grid + swipe deck, profile pages with galleries/reviews, favourites, booking with public-venue + duration, partner dashboard (photos, rate card, availability, stats), conversations, in-app notifications.
-**Accounts:** email verification, forgot/reset password, change password, account deletion, rate limiting.
-**Payments:** server-side Razorpay order creation, HMAC signature verification, idempotent webhook. *(Written to Razorpay's documented API; not run against a live account - test in Razorpay test mode first.)*
-**Ops:** 17 backend tests, production-config guard (refuses to boot with default secrets), security headers + CSP, PWA with real icons.
+## Landing page & marketing pages
+Real home page (`#/`): hero with city + activity search, **live stats from your database (nothing invented)**, how-it-works, popular plans, featured partners, cities, safety section, real testimonials (only appear once reviews exist), membership pricing, partner CTA, FAQ. Plus: Browse (`#/browse`, now accepts `?city=` / `?activity=` links), FAQ, Become-a-partner, Help & Support, Refund policy.
+
+## Money (booking payments, earnings, payouts, refunds)
+* Customer pays **after the partner accepts**; PairUp holds the money (no more advance-payment scams).
+* Partner earns price minus platform fee, released to a wallet 24 h after completion (dispute window).
+* Cancellation policy enforced in code: 100% refund if 24 h+ before, 50% at 2-24 h, 0% under 2 h; partner/PairUp cancellations always refund 100%. The retained part compensates the partner.
+* Unpaid accepted bookings auto-cancel 30 min before start; bookings need 2 h lead time.
+* Partner wallet + ledger, UPI payout requests (needs ID verification, min amount), admin payout queue with UTR recording, reject-returns-funds, manual adjustments, refund retry.
+* Razorpay: order creation, HMAC verification, idempotent webhook for **both** membership and bookings, gateway refunds, auto-refund if someone pays for an already-cancelled booking.
+
+## Trust & operations
+* **ID verification**: partner uploads ID + selfie to *private* storage; admin reviews; files are **deleted on decision**; approval = ✓ badge and unlocks payouts.
+* Partner **weekly hours** (IST) enforced when booking.
+* Partner **replies to reviews**.
+* **Support tickets** (visitors + members) with admin reply by email.
+* Email notifications for bookings, payments, payouts, ID checks (SMTP, or logged in dev).
+* Admin console: finance overview, ID checks, payouts, support, payment status per booking, refund retry.
+* **In-place database upgrade** (`migrate.py`) - verified against a real v2 database.
+
+## Bug found and fixed during v3 testing
+The browser test showed a new rule I'd written would instantly cancel any booking made less than 2 h ahead (the form defaulted to 45 min). Fixed: 2 h minimum lead time, 30 min payment deadline, partners can't accept requests too close to the start. Covered by a test.
+
+## Tests
+28 backend tests (money flows, refunds, payouts, KYC, schedule, support, webhook idempotency, migration) + a 40-step browser-simulation run across landing, booking, payment, partner and admin flows.

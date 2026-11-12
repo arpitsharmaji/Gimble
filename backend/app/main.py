@@ -7,7 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from .config import settings, validate_for_production
 from .db import Base, engine, SessionLocal
-from .routers import auth, partners, bookings, social, membership, admin
+from .routers import auth, partners, bookings, social, membership, admin, payments, wallet, kyc, support, home
+from .migrate import ensure_columns
 from .seed import seed
 
 logging.basicConfig(level=logging.INFO)
@@ -18,17 +19,19 @@ FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 async def lifespan(app: FastAPI):
     validate_for_production()
     settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    settings.PRIVATE_DIR.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    ensure_columns(engine, Base.metadata)  # upgrades older databases in place
     seed()
     yield
 
 
-app = FastAPI(title="PairUp API", version="2.0.0", lifespan=lifespan,
+app = FastAPI(title="PairUp API", version="3.0.0", lifespan=lifespan,
               description="Companion discovery, booking and safety platform",
               docs_url=None if settings.is_production else "/docs",
               redoc_url=None, openapi_url=None if settings.is_production else "/openapi.json")
 
-for r in (auth, partners, bookings, social, membership, admin):
+for r in (auth, partners, bookings, social, membership, payments, wallet, kyc, support, home, admin):
     app.include_router(r.router)
 
 

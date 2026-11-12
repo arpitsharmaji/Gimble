@@ -1,7 +1,7 @@
 // Network-first for the app shell so updates always arrive; cache is only an offline fallback.
-const CACHE = "pairup-shell-v3";
+const CACHE = "pairup-shell-v4";
 const SHELL = ["/", "/index.html", "/styles.css", "/manifest.webmanifest", "/icons/icon.svg",
-  "/js/app.js", "/js/core.js", "/js/auth.js", "/js/discover.js", "/js/account.js", "/js/admin.js", "/js/safety.js", "/js/legal.js"];
+  "/js/app.js", "/js/core.js", "/js/auth.js", "/js/discover.js", "/js/account.js", "/js/admin.js", "/js/safety.js", "/js/legal.js", "/js/home.js", "/js/pages.js", "/js/wallet.js"];
 self.addEventListener("install", e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch(() => {}))); });
 self.addEventListener("activate", e => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (k !== CACHE) await caches.delete(k);

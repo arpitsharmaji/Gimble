@@ -1,6 +1,7 @@
 import { html, raw, api, state, $, $$, openModal, closeModal, toast, actions, submits, formObj, inr, fmtDT, fmtD, ago, photo, isCustomer, askText, confirmBox, busy, clearAuth, refreshMe } from './core.js';
 import { openAuth } from './auth.js';
 import { openMembership, startBooking } from './discover.js';
+import { openRazorpay } from './core.js';
 import { reportModal, safetyModal, blockUser, CATEGORIES } from './safety.js';
 
 export const timers = [];
@@ -14,7 +15,7 @@ export async function savedPage(root) {
   root.innerHTML = '<div class="page"><h1>Saved</h1><div class="skeleton"></div></div>';
   try {
     const rows = await api('/favorites');
-    root.innerHTML = html`<div class="page"><h1>Saved profiles</h1>${rows.length ? html`<div class="grid">${rows.map(p => html`<article class="card" tabindex="0" data-action="open-profile" data-id="${p.id}"><div class="card-photo">${photo(p)}</div><div class="card-body"><div class="between"><h3>${p.name}, ${p.age}</h3><span class="rate">★ ${p.review_count ? p.rating.toFixed(1) : 'New'}</span></div><p class="muted small">⌖ ${p.city} · from <b>${inr(p.min_rate)}</b></p></div></article>`)}</div>` : html`<div class="empty"><p>Nothing saved yet.</p><p class="muted">Tap ♡ on a profile to keep it here.</p><a class="btn primary" href="#/">Discover people</a></div>`}</div>`.s;
+    root.innerHTML = html`<div class="page"><h1>Saved profiles</h1>${rows.length ? html`<div class="grid">${rows.map(p => html`<article class="card" tabindex="0" data-action="open-profile" data-id="${p.id}"><div class="card-photo">${photo(p)}</div><div class="card-body"><div class="between"><h3>${p.name}, ${p.age}</h3><span class="rate">★ ${p.review_count ? p.rating.toFixed(1) : 'New'}</span></div><p class="muted small">⌖ ${p.city} · from <b>${inr(p.min_rate)}</b></p></div></article>`)}</div>` : html`<div class="empty"><p>Nothing saved yet.</p><p class="muted">Tap ♡ on a profile to keep it here.</p><a class="btn primary" href="#/browse">Browse people</a></div>`}</div>`.s;
   } catch (e) { root.innerHTML = html`<div class="page"><p class="err">${e.message}</p></div>`.s; }
 }
 
@@ -32,9 +33,21 @@ export async function bookingsPage(root) {
     ['Past', b => ['completed', 'cancelled', 'rejected', 'expired'].includes(b.status)],
   ];
   root.innerHTML = html`<div class="page"><h1>Bookings</h1>
-    ${!rows.length ? html`<div class="empty"><p>No bookings yet.</p>${isP ? html`<p class="muted">Requests from customers will appear here.</p>` : html`<a class="btn primary" href="#/">Find someone to meet</a>`}</div>` : ''}
+    ${!rows.length ? html`<div class="empty"><p>No bookings yet.</p>${isP ? html`<p class="muted">Requests from customers will appear here.</p>` : html`<a class="btn primary" href="#/browse">Find someone to meet</a>`}</div>` : ''}
     ${groups.map(([title, test]) => { const g = rows.filter(test); return g.length ? html`<h2>${title} <small class="muted">(${g.length})</small></h2><div class="list">${g.map(b => bookingCard(b, isP, now))}</div>` : ''; })}</div>`.s;
   root._rows = rows;
+}
+function payLine(b, isP) {
+  if (b.payment_status === 'refunded') return html`<p class="small ok">↩ Fully refunded (${inr(b.refund_amount)})</p>`;
+  if (b.payment_status === 'partially_refunded') return html`<p class="small warn">↩ Partly refunded (${inr(b.refund_amount)}) under the cancellation policy</p>`;
+  if (b.payment_status === 'refund_pending') return html`<p class="small warn">↩ Refund of ${inr(b.refund_amount)} is being processed</p>`;
+  if (b.status === 'accepted' && b.payments_on) {
+    if (b.payment_status === 'paid') return html`<p class="small ok">✓ Paid ${inr(b.paid_amount)} · held safely by PairUp until your plan is done${isP ? html` · you'll earn <b>${inr(b.partner_earning)}</b>` : ''}</p>`;
+    return isP ? html`<p class="small warn">⏳ Waiting for the customer to pay (they must pay by ${fmtDT(b.pay_deadline)})</p>`
+      : html`<div class="paybox"><span>Pay <b>${inr(b.price)}</b> by ${fmtDT(b.pay_deadline)} to confirm this plan.</span><button class="btn primary sm" data-action="pay-booking" data-id="${b.id}">Pay ${inr(b.price)}</button></div>`;
+  }
+  if (b.status === 'completed' && b.payment_status === 'paid') return html`<p class="small ok">✓ Paid ${inr(b.paid_amount)}</p>`;
+  return '';
 }
 function bookingCard(b, isP, now) {
   const other = isP ? b.customer_name : b.partner_name, otherId = isP ? b.customer_id : b.partner_id;
@@ -43,19 +56,26 @@ function bookingCard(b, isP, now) {
   return html`<div class="item"><div class="between"><div><b>${b.activity}</b> <span class="muted">with ${other}</span></div>${pill(b.status)}</div>
     <p class="muted small">📅 ${fmtDT(b.scheduled_at)} · ${b.duration_minutes / 60}h · ${inr(b.price)}</p>
     <p class="muted small">📍 ${b.location}</p>${b.note ? html`<p class="small">“${b.note}”</p>` : ''}${b.status_reason ? html`<p class="muted small">Reason: ${b.status_reason}</p>` : ''}
+    ${payLine(b, isP)}
     <div class="row wrap">
     ${isP && b.status === 'requested' ? html`<button class="btn primary sm" data-action="bk" data-id="${b.id}" data-s="accepted">Accept</button><button class="btn ghost sm" data-action="bk" data-id="${b.id}" data-s="rejected">Decline</button>` : ''}
     ${!isP && b.status === 'requested' ? html`<button class="btn ghost sm" data-action="bk" data-id="${b.id}" data-s="cancelled">Cancel request</button>` : ''}
-    ${b.status === 'accepted' ? html`<a class="btn ghost sm" href="#/messages/${otherId}">💬 Message</a>${started ? html`<button class="btn primary sm" data-action="bk" data-id="${b.id}" data-s="completed">Mark completed</button>` : html`<span class="muted small">Can be completed once it starts</span>`}<button class="btn ghost sm" data-action="bk" data-id="${b.id}" data-s="cancelled">Cancel</button>` : ''}
+    ${b.status === 'accepted' ? html`<a class="btn ghost sm" href="#/messages/${otherId}">💬 Message</a>${!started ? html`<span class="muted small">Can be completed once it starts</span>` : (b.payments_on && b.payment_status !== 'paid') ? '' : html`<button class="btn primary sm" data-action="bk" data-id="${b.id}" data-s="completed">Mark completed</button>`}<button class="btn ghost sm" data-action="bk" data-id="${b.id}" data-s="cancelled">Cancel</button>` : ''}
     ${soon ? html`<button class="btn danger sm" data-action="bk-safety" data-id="${b.id}">🛡 Safety</button>` : ''}
     ${!isP && b.status === 'completed' ? html`<button class="btn primary sm" data-action="bk-review" data-id="${b.id}">★ Leave a review</button>` : ''}
     ${['completed', 'accepted'].includes(b.status) ? html`<button class="link small" data-action="bk-report" data-id="${b.id}">Report</button>` : ''}
     </div></div>`;
 }
 const findBooking = el => $('#view')._rows.find(b => b.id === Number(el.dataset.id));
+actions['pay-booking'] = el => busy(el, async () => {
+  const b = findBooking(el);
+  const co = await api(`/bookings/${b.id}/pay`, { method: 'POST' });
+  if (co.mode === 'demo') { await api(`/bookings/${b.id}/demo-pay`, { method: 'POST' }); toast('Demo payment recorded (no money collected).', 'ok'); return bookingsPage($('#view')); }
+  await openRazorpay(co, async resp => { await api('/payments/verify', { method: 'POST', body: resp }); toast('Payment confirmed - your plan is booked!', 'ok'); bookingsPage($('#view')); });
+});
 actions.bk = async el => {
   const b = findBooking(el), s = el.dataset.s; let reason = '';
-  if (s === 'cancelled' && b.status === 'accepted') { reason = await askText({ title: 'Cancel this booking?', label: 'Reason (shared with the other person)', required: true, confirm: 'Cancel booking', danger: true }); if (reason === null) return; }
+  if (s === 'cancelled' && b.status === 'accepted') { const refundNote = b.payment_status === 'paid' ? (state.me.id === b.customer_id ? ` If you cancel now you get ${b.refund_percent_now}% back.` : ' The customer will be fully refunded.') : ''; reason = await askText({ title: 'Cancel this booking?', label: 'Reason (shared with the other person).' + refundNote, required: true, confirm: 'Cancel booking', danger: true }); if (reason === null) return; }
   else if (s === 'rejected') { reason = await askText({ title: 'Decline request', label: 'Optional note', confirm: 'Decline' }); if (reason === null) return; }
   else if (s === 'cancelled') { if (!await confirmBox({ title: 'Cancel request?', text: 'The partner will be notified.', confirm: 'Cancel request', danger: true })) return; }
   await busy(el, async () => { await api(`/bookings/${b.id}`, { method: 'PATCH', body: { status: s, reason } }); toast('Booking updated.', 'ok'); bookingsPage($('#view')); });
@@ -143,6 +163,7 @@ export async function dashboardPage(root) {
   root.innerHTML = '<div class="page"><div class="skeleton tall"></div></div>';
   try {
     const [p, bookings] = await Promise.all([api('/partner/profile'), api('/bookings')]);
+    const myReviews = await api(`/partners/${state.me.id}/reviews`).catch(() => []);
     draft = { ...p, photos: [...p.photos], activities: [...p.activities], rates: { ...p.rates } };
     const done = bookings.filter(b => b.status === 'completed'), pending = bookings.filter(b => b.status === 'requested');
     const banner = {
@@ -155,8 +176,10 @@ export async function dashboardPage(root) {
       <div class="notice ${banner[0]}">${banner[1]}${p.status === 'approved' ? html` <a href="#/p/${p.id}">View public profile</a>` : ''}</div>
       <div class="stats"><div><b>${pending.length}</b><span>Pending requests</span></div><div><b>${done.length}</b><span>Completed</span></div><div><b>${p.review_count ? p.rating.toFixed(1) : '-'}</b><span>Rating</span></div><div><b>${inr(done.reduce((s, b) => s + b.price, 0))}</b><span>Booked value*</span></div></div>
       <p class="muted small">*Sum of completed booking prices. PairUp doesn't process booking payments or payouts in this build.</p>
+      <div class="tiles"><a class="tile" href="#/earnings"><b>💰 Earnings &amp; payouts</b><span>Wallet, UPI payouts</span></a><a class="tile" href="#/verify-id"><b>${p.verified ? '✓ ID verified' : '🪪 Get ID verified'}</b><span>${p.verified ? 'Badge active' : 'Needed for payouts'}</span></a><a class="tile" href="#/schedule"><b>🗓 Weekly hours</b><span>${Object.keys(p.schedule || {}).length ? Object.keys(p.schedule).length + ' days set' : 'Any time'}</span></a></div>
       <label class="switch"><input type="checkbox" id="avail" data-action="toggle-avail" ${p.available ? 'checked' : ''}><span></span> Accepting booking requests</label>
       ${pending.length ? html`<h2>Pending requests</h2><div class="list">${pending.map(b => html`<div class="item"><b>${b.activity}</b> <span class="muted">from ${b.customer_name}</span><p class="muted small">${fmtDT(b.scheduled_at)} · ${inr(b.price)} · 📍 ${b.location}</p><a class="btn primary sm" href="#/bookings">Respond</a></div>`)}</div>` : ''}
+      ${myReviews.length ? html`<h2>Recent reviews</h2><div class="list">${myReviews.slice(0, 5).map(r => html`<div class="item"><div class="between"><b>${r.reviewer}</b><span class="stars">${'★'.repeat(r.rating)}</span></div><p>${r.comment || ''}</p>${r.partner_reply ? html`<p class="muted small">Your reply: ${r.partner_reply}</p>` : html`<button class="btn ghost sm" data-action="reply-review" data-id="${r.booking_id}">Reply</button>`}</div>`)}</div>` : ''}
       <h2>Your profile</h2><form id="pform" data-submit="save-profile" class="stack">
       <label class="lbl">Photos <small class="muted">(up to 6 · first is your main photo · clear face photos only, no explicit images)</small></label><div class="photos" id="photos"></div>
       <label class="lbl" for="p-head">Headline</label><input class="field" id="p-head" name="headline" maxlength="120" value="${p.headline}" placeholder="e.g. Cafe hopper & movie buff">
@@ -232,3 +255,8 @@ actions['delete-account'] = () => {
   openModal(html`<h2>Delete your account?</h2><p class="muted">Enter your password to confirm. Accepted bookings must be cancelled or completed first.</p><form data-submit="del" class="stack"><input class="field" name="password" type="password" placeholder="Password" required autocomplete="current-password"><button class="btn danger block" type="submit">Permanently delete</button></form>`, { label: 'Delete account' });
 };
 submits.del = async f => { await api('/auth/delete-account', { method: 'POST', body: formObj(f) }); clearAuth(); closeModal(); toast('Your account was deleted.', 'ok'); location.hash = '#/'; };
+
+actions['reply-review'] = async el => {
+  const r = await askText({ title: 'Reply publicly', label: 'Keep it friendly - your reply is shown on your profile.', required: true, confirm: 'Post reply' }); if (r === null) return;
+  await api(`/reviews/${el.dataset.id}/reply`, { method: 'POST', body: { reply: r } }); toast('Reply posted.', 'ok'); dashboardPage($('#view'));
+};

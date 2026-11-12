@@ -1,4 +1,4 @@
-import { html, raw, api, state, $, $$, openModal, closeModal, toast, actions, submits, formObj, inr, fmtD, photo, stars, isCustomer, requireLogin, busy, ago } from './core.js';
+import { html, raw, api, state, $, $$, openModal, closeModal, toast, actions, submits, formObj, inr, fmtD, photo, stars, isCustomer, requireLogin, busy, ago, openRazorpay } from './core.js';
 import { openAuth } from './auth.js';
 import { reportModal, blockUser } from './safety.js';
 
@@ -9,15 +9,12 @@ let items = [], total = 0, deckIdx = 0, loading = false, rootEl = null;
 let cleanupDeck = null;
 
 // ====================== DISCOVER ======================
-export async function discoverPage(root) {
+export async function discoverPage(root, params) {
   rootEl = root; cleanupDeck = null;
+  if (params && [...params.keys()].length) { Object.assign(F, { q: '', city: '', activity: '', max_price: '', min_rating: '', gender: '', sort: 'relevance', available: false }); for (const k of ['q', 'city', 'activity', 'max_price', 'min_rating', 'gender', 'sort']) if (params.get(k)) F[k] = params.get(k); }
   const acts = (state.meta && state.meta.activity_suggestions) || [];
   root.innerHTML = html`
-  <section class="hero">
-    <div><p class="eyebrow">YOUR CITY, YOUR PEOPLE</p><h1>Find your kind<br>of <em>company.</em></h1>
-    <p class="sub">Coffee, a film, a gym session or a city walk - book verified, friendly companions for public, non-sexual plans.</p>
-    <ul class="trust"><li>✓ Admin-approved profiles</li><li>✓ Public meet-ups only</li><li>✓ Report &amp; block tools</li><li>✓ Pay only through PairUp</li></ul></div>
-  </section>
+  <section class="browse-head"><h1>Browse companions</h1><p class="muted">Admin-approved profiles. Meet in public places only.</p></section>
   <section class="filters" aria-label="Filters">
     <input class="field" id="f-q" type="search" placeholder="Search name or interest" value="${F.q}" aria-label="Search">
     <input class="field" id="f-city" list="city-list" placeholder="City" value="${F.city}" aria-label="City"><datalist id="city-list"></datalist>
@@ -71,7 +68,7 @@ function draw() {
   out.innerHTML = html`<p class="muted small count">${total} ${total === 1 ? 'person' : 'people'} found</p><div class="grid">${items.map(card)}</div>${items.length < total ? html`<div class="center"><button class="btn ghost" data-action="load-more">Load more</button></div>` : ''}`.s;
 }
 
-const card = p => html`<article class="card" tabindex="0" data-action="open-profile" data-id="${p.id}" aria-label="${p.name}, ${p.age}, ${p.city}">
+export const card = p => html`<article class="card" tabindex="0" data-action="open-profile" data-id="${p.id}" aria-label="${p.name}, ${p.age}, ${p.city}">
   <div class="card-photo">${photo(p)}${p.verified ? html`<span class="verified">✓ ID verified</span>` : ''}${heart(p.id)}
   <span class="avail ${p.available ? 'on' : ''}">${p.available ? 'Available' : 'Unavailable'}</span></div>
   <div class="card-body"><div class="between"><h3>${p.name}, ${p.age}</h3><span class="rate">★ ${p.review_count ? p.rating.toFixed(1) : 'New'}</span></div>
@@ -79,7 +76,7 @@ const card = p => html`<article class="card" tabindex="0" data-action="open-prof
   ${p.headline ? html`<p class="headline">${p.headline}</p>` : ''}
   <div class="tags">${p.activities.slice(0, 3).map(t => html`<span>${t}</span>`)}${p.activities.length > 3 ? html`<span>+${p.activities.length - 3}</span>` : ''}</div></div></article>`;
 
-const heart = id => html`<button class="heart ${state.favs.has(id) ? 'on' : ''}" data-action="toggle-fav" data-id="${id}" aria-label="${state.favs.has(id) ? 'Remove from saved' : 'Save profile'}" aria-pressed="${String(state.favs.has(id))}">${state.favs.has(id) ? '♥' : '♡'}</button>`;
+export const heart = id => html`<button class="heart ${state.favs.has(id) ? 'on' : ''}" data-action="toggle-fav" data-id="${id}" aria-label="${state.favs.has(id) ? 'Remove from saved' : 'Save profile'}" aria-pressed="${String(state.favs.has(id))}">${state.favs.has(id) ? '♥' : '♡'}</button>`;
 
 actions['open-profile'] = el => { location.hash = '#/p/' + el.dataset.id; };
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches && e.target.matches('.card[data-action]')) e.target.click(); });
@@ -136,10 +133,10 @@ export async function profilePage(root, id) {
   root.innerHTML = '<div class="page"><div class="skeleton tall"></div></div>';
   let p, reviews;
   try { [p, reviews] = await Promise.all([api(`/partners/${id}`), api(`/partners/${id}/reviews`)]); }
-  catch (e) { root.innerHTML = html`<div class="page narrow center"><h1>Profile unavailable</h1><p class="muted">${e.status === 404 ? 'This profile isn\'t available.' : e.message}</p><a class="btn primary" href="#/">Back to discover</a></div>`.s; return; }
+  catch (e) { root.innerHTML = html`<div class="page narrow center"><h1>Profile unavailable</h1><p class="muted">${e.status === 404 ? 'This profile isn\'t available.' : e.message}</p><a class="btn primary" href="#/browse">Back to browse</a></div>`.s; return; }
   const rates = Object.entries(p.rates); selAct = selAct && p.rates[selAct] ? selAct : rates[0] ? rates[0][0] : '';
   const own = state.me && state.me.id === p.id;
-  root.innerHTML = html`<div class="page profile"><a class="back" href="#/">← Back</a>
+  root.innerHTML = html`<div class="page profile"><a class="back" href="#/browse">← Back to browse</a>
   <div class="profile-grid">
     <div class="gallery"><div class="main-photo">${photo(p)}${p.verified ? html`<span class="verified">✓ ID verified</span>` : ''}</div>
       ${p.photos.length > 1 ? html`<div class="thumbs">${p.photos.map((u, i) => html`<button data-action="gallery-pick" data-src="${u}" aria-label="Photo ${i + 1}"><img src="${u}" alt="" loading="lazy"></button>`)}</div>` : ''}</div>
@@ -150,15 +147,16 @@ export async function profilePage(root, id) {
       ${p.headline ? html`<p class="headline big">${p.headline}</p>` : ''}
       <p class="bio">${p.bio}</p>
       ${p.languages.length ? html`<p class="small"><b>Speaks:</b> ${p.languages.join(', ')}</p>` : ''}
+      ${Object.keys(p.schedule || {}).length ? html`<p class="small"><b>Usually available:</b> ${Object.entries(p.schedule).map(([k, w]) => `${k[0].toUpperCase() + k.slice(1)} ${w[0]}-${w[1]}`).join(' · ')} <span class="muted">(IST)</span></p>` : ''}
       <h3>Activities &amp; rates</h3>
       <div class="rate-list" role="radiogroup" aria-label="Choose an activity">${rates.map(([a, v]) => html`<label class="rate-row ${a === selAct ? 'sel' : ''}"><span><input type="radio" name="rate" value="${a}" ${a === selAct ? 'checked' : ''} data-action="pick-rate"> ${a}</span><strong>${inr(v)}</strong></label>`)}</div>
-      <p class="muted small">Per session, in INR. The price is fixed by the partner and locked when you send a request. Browsing is free; a membership is needed to send requests.</p>
+      <p class="muted small">Per session, in INR. The price is fixed by the partner and locked when you send a request. You pay <b>after the partner accepts</b>; PairUp holds the money until your plan is done. <a href="#/refunds">Cancellation &amp; refunds</a></p>
       <div class="cta-bar"><button class="btn primary big" data-action="book" data-id="${p.id}" ${own ? 'disabled' : ''}>${own ? 'This is your profile' : 'Request booking →'}</button>
         <button class="btn ghost" data-action="share-profile" data-name="${p.name}">Share</button></div>
       <div class="notice">🛡 Meet in public places · never pay outside PairUp · no sexual services. <a href="#/safety">Safety tips</a></div>
       ${!own ? html`<div class="row small"><button class="link" data-action="report-user" data-id="${p.id}" data-name="${p.name}">Report</button><button class="link" data-action="block-user" data-id="${p.id}" data-name="${p.name}">Block</button></div>` : ''}
     </div></div>
-  <h2>Reviews</h2>${reviews.length ? html`<div class="reviews">${reviews.map(r => html`<div class="review"><div class="between"><b>${r.reviewer}</b><span class="stars">${stars(r.rating)}</span></div><p>${r.comment || html`<span class="muted">No written comment.</span>`}</p><p class="muted small">${fmtD(r.created_at)} · verified booking</p></div>`)}</div>` : html`<p class="muted">No reviews yet. Reviews can only be written by customers after a completed booking.</p>`}
+  <h2>Reviews</h2>${reviews.length ? html`<div class="reviews">${reviews.map(r => html`<div class="review"><div class="between"><b>${r.reviewer}</b><span class="stars">${stars(r.rating)}</span></div><p>${r.comment || html`<span class="muted">No written comment.</span>`}</p><p class="muted small">${fmtD(r.created_at)} · verified booking</p>${r.partner_reply ? html`<div class="reply"><b>${p.name} replied:</b> ${r.partner_reply}</div>` : ''}</div>`)}</div>` : html`<p class="muted">No reviews yet. Reviews can only be written by customers after a completed booking.</p>`}
   </div>`.s;
   root._partner = p;
 }
@@ -169,7 +167,7 @@ actions['share-profile'] = async el => {
   try { if (navigator.share) await navigator.share({ title: `${el.dataset.name} on PairUp`, url }); else { await navigator.clipboard.writeText(url); toast('Link copied.', 'ok'); } } catch { /* cancelled */ }
 };
 actions['report-user'] = el => login(() => reportModal(Number(el.dataset.id), el.dataset.name));
-actions['block-user'] = el => login(async () => { if (await blockUser(Number(el.dataset.id), el.dataset.name)) location.hash = '#/'; });
+actions['block-user'] = el => login(async () => { if (await blockUser(Number(el.dataset.id), el.dataset.name)) location.hash = '#/browse'; });
 actions.book = el => { const p = $('#view')._partner; if (p) startBooking(p, selAct); };
 
 // ====================== BOOKING FLOW ======================
@@ -182,7 +180,7 @@ export function startBooking(p, activity) {
 }
 
 function bookingForm(p, activity) {
-  const min = new Date(Date.now() + 45 * 60000); min.setMinutes(Math.ceil(min.getMinutes() / 15) * 15, 0, 0);
+  const min = new Date(Date.now() + 135 * 60000); min.setMinutes(Math.ceil(min.getMinutes() / 15) * 15, 0, 0);
   const local = new Date(min.getTime() - min.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   const max = new Date(Date.now() + 89 * 86400000); const maxLocal = new Date(max.getTime() - max.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   openModal(html`<span class="badge">BOOKING REQUEST</span><h2>Plan with ${p.name}</h2>
@@ -195,7 +193,7 @@ function bookingForm(p, activity) {
     <label class="lbl" for="b-note">Note (optional)</label><textarea class="field" id="b-note" name="note" rows="2" maxlength="1000" placeholder="Anything helpful for the partner"></textarea>
     <label class="check"><input type="checkbox" name="safety_ack" required> <span>I'll meet in a public place, respect boundaries, keep payments on PairUp, and understand sexual services are not allowed.</span></label>
     <button class="btn primary block" type="submit">Send booking request</button>
-    <p class="muted small center">You're not charged per booking by PairUp. The partner confirms before anything is final.</p></form>`, { label: 'Booking request' });
+    <p class="muted small center">Nothing is charged now. If the partner accepts, you'll pay securely through PairUp to confirm the plan. <a href="#/refunds" data-action="close-modal">Refund policy</a></p></form>`, { label: 'Booking request' });
 }
 submits.booking = async f => {
   const b = formObj(f);
@@ -209,9 +207,6 @@ submits.booking = async f => {
 };
 
 // ====================== MEMBERSHIP ======================
-let _loaded = {};
-const loadScript = src => _loaded[src] ||= new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load the payment window.')); document.head.append(s); });
-
 export async function openMembership(onDone) {
   let info;
   try { info = await api('/membership/plans'); } catch (e) { toast(e.message, 'error'); return; }
@@ -228,10 +223,6 @@ submits.checkout = async f => {
   const finish = () => { closeModal(); toast('Membership active - you can now send requests.', 'ok'); if (onDone) onDone(); };
   if (mode === 'demo') { await api('/membership/demo-activate', { method: 'POST', body: { plan } }); return finish(); }
   const co = await api('/membership/checkout', { method: 'POST', body: { plan } });
-  await loadScript('https://checkout.razorpay.com/v1/checkout.js');
-  const rzp = new window.Razorpay({ key: co.key_id, amount: co.amount, currency: co.currency, name: co.name, description: co.description, order_id: co.order_id, prefill: co.prefill, theme: { color: '#ff648d' },
-    handler: async resp => { try { await api('/membership/verify', { method: 'POST', body: resp }); finish(); } catch (e) { toast(e.message + ' If you were charged, your membership will activate automatically within a few minutes.', 'error'); } } });
-  rzp.on('payment.failed', () => toast('Payment failed. Please try again.', 'error'));
-  rzp.open();
+  await openRazorpay(co, async resp => { await api('/payments/verify', { method: 'POST', body: resp }); finish(); });
 };
 actions['open-membership'] = () => login(() => { if (!isCustomer()) toast('Memberships are for customer accounts.', 'error'); else openMembership(); });

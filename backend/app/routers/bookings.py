@@ -3,13 +3,14 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from ..config import settings
+from ..config import settings, MIN_LEAD_MINUTES, ACCEPT_MIN_LEAD_MINUTES
 from ..db import get_db
 from ..models import User, PartnerProfile, Booking, Review, utcnow
 from ..moderation import check_text
-from ..schemas import BookingIn, BookingStatusIn, ReviewIn
+from ..schemas import BookingIn, BookingStatusIn, ReviewIn, ReplyIn
 from ..security import current_user, rate_limit
-from ..services import (active_membership, booking_json, expire_stale, is_blocked, notify, audit)
+from ..services import (active_membership, booking_json, expire_stale, is_blocked, notify, audit,
+                        cancel_booking, complete_booking, in_schedule, refund_percent_if_customer_cancels)
 
 router = APIRouter(prefix="/api", tags=["bookings"])
 MAX_OPEN_REQUESTS = 10
@@ -41,14 +42,16 @@ def create_booking(x: BookingIn, u: User = Depends(current_user), db: Session = 
     if start.tzinfo is not None:
         start = start.astimezone(timezone.utc).replace(tzinfo=None)
     now = utcnow()
-    if start < now + timedelta(minutes=30):
-        raise HTTPException(400, "Choose a time at least 30 minutes from now")
+    if start < now + timedelta(minutes=MIN_LEAD_MINUTES):
+        raise HTTPException(400, "Choose a time at least 2 hours from now so there's time to confirm and pay")
     if start > now + timedelta(days=90):
         raise HTTPException(400, "Bookings can be made up to 90 days ahead")
     for field, ctx in ((x.location, "booking"), (x.note, "booking")):
         problem = check_text(field, ctx)
         if problem:
             raise HTTPException(400, problem)
+    if not in_schedule(p, start, x.duration_minutes):
+        raise HTTPException(400, "This partner isn't available at that time. Check their weekly hours on their profile.")
     open_n = db.query(Booking).filter(Booking.customer_id == u.id, Booking.status == "requested").count()
     if open_n >= MAX_OPEN_REQUESTS:
         raise HTTPException(429, "You have too many pending requests. Wait for responses first.")
@@ -102,17 +105,28 @@ def update_booking(booking_id: int, x: BookingStatusIn, u: User = Depends(curren
         elif new == "completed":
             if utcnow() < b.scheduled_at:
                 raise HTTPException(400, "You can mark this completed once the plan has started")
+            if settings.booking_payments_on and b.payment_status != "paid":
+                raise HTTPException(400, "This booking hasn't been paid, so it can't be completed")
         else:
             raise HTTPException(400, "An accepted booking can only be cancelled or completed")
 
     if new == "accepted":
+        if settings.booking_payments_on and b.scheduled_at < utcnow() + timedelta(minutes=ACCEPT_MIN_LEAD_MINUTES):
+            raise HTTPException(409, "This is too close to the start time to confirm - the customer wouldn't have time to pay. Please decline.")
         clash = db.query(Booking).filter(Booking.partner_id == b.partner_id, Booking.status == "accepted",
                                          Booking.id != b.id).all()
         if any(o.scheduled_at < _end(b) and b.scheduled_at < _end(o) for o in clash):
             raise HTTPException(409, "You already have an accepted booking that overlaps this time")
 
-    b.status, b.status_reason = new, reason
-    labels = {"accepted": "accepted your request", "rejected": "declined your request",
+    if new == "cancelled":
+        pct = 100 if is_partner or b.status == "requested" else refund_percent_if_customer_cancels(b)
+        cancel_booking(db, b, reason, pct)
+    elif new == "completed":
+        complete_booking(db, b)
+        b.status_reason = reason
+    else:
+        b.status, b.status_reason = new, reason
+    labels = {"accepted": "accepted your request - pay now to confirm", "rejected": "declined your request",
               "cancelled": "cancelled the booking", "completed": "marked the booking completed"}
     notify(db, other, "booking", f"{u.name.split()[0]} {labels[new]} ({b.activity})", "#/bookings")
     audit(db, u.id, f"booking_{new}", f"booking:{b.id}")
@@ -141,3 +155,17 @@ def create_review(booking_id: int, x: ReviewIn, u: User = Depends(current_user),
     notify(db, b.partner_id, "review", f"You received a {x.rating}★ review", "#/dashboard")
     db.commit()
     return {"message": "Verified review saved"}
+
+
+@router.post("/reviews/{booking_id}/reply")
+def reply_to_review(booking_id: int, x: ReplyIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    r = db.query(Review).filter_by(booking_id=booking_id, partner_id=u.id).first()
+    if not r:
+        raise HTTPException(404, "Review not found")
+    reply = x.reply.strip()
+    problem = check_text(reply, "message")
+    if problem:
+        raise HTTPException(400, problem)
+    r.partner_reply = reply
+    db.commit()
+    return {"message": "Reply posted"}

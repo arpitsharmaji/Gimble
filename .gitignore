@@ -1,27 +1,9 @@
-# Python
-__pycache__/
-*.py[cod]
 .venv/
-venv/
-
-# Database
+__pycache__/
 *.db
-*.sqlite
-*.sqlite3
-
-# Environment variables and secrets
 .env
-.env.*
-!.env.example
-
-# Node.js
-node_modules/
-dist/
-build/
-
-# Mac
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/private/*
+!backend/private/.gitkeep
 .DS_Store
-
-# IDE
-.vscode/
-.idea/

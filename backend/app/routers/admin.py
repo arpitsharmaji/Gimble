@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from ..db import get_db
-from ..models import (User, PartnerProfile, Booking, Membership, Report, AuditLog, Review, utcnow)
-from ..schemas import AdminPartnerDecisionIn, AdminVerifyIn, AdminSuspendIn, AdminResolveIn
+from ..config import settings
+from ..models import (User, PartnerProfile, Booking, Membership, Report, AuditLog, Review, PayoutRequest,
+                      KycSubmission, SupportTicket, LedgerEntry, utcnow)
+from ..schemas import (AdminPartnerDecisionIn, AdminVerifyIn, AdminSuspendIn, AdminResolveIn, AdminPayoutIn, AdminAdjustIn)
 from ..security import admin_user
-from ..services import partner_json, booking_json, notify, audit
+from ..services import (partner_json, booking_json, notify, audit, cancel_booking, credit, _do_refund)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -23,6 +25,13 @@ def overview(a: User = Depends(admin_user), db: Session = Depends(get_db)):
         "completed_bookings": q(Booking).filter_by(status="completed").count(),
         "gross_completed_inr": q(func.coalesce(func.sum(Booking.price), 0)).filter(Booking.status == "completed").scalar(),
         "active_memberships": q(Membership).filter(Membership.status == "active", Membership.expires_at > utcnow()).count(),
+        "paid_in_inr": q(func.coalesce(func.sum(Booking.paid_amount - Booking.refund_amount), 0)).filter(Booking.payment_status.in_(("paid", "partially_refunded"))).scalar(),
+        "platform_fees_inr": q(func.coalesce(func.sum(Booking.platform_fee), 0)).filter(Booking.status == "completed", Booking.payment_status == "paid").scalar(),
+        "pending_payouts": q(PayoutRequest).filter_by(status="requested").count(),
+        "pending_payout_inr": q(func.coalesce(func.sum(PayoutRequest.amount), 0)).filter(PayoutRequest.status == "requested").scalar(),
+        "pending_kyc": q(KycSubmission).filter_by(status="pending").count(),
+        "open_tickets": q(SupportTicket).filter_by(status="open").count(),
+        "refund_pending": q(Booking).filter_by(payment_status="refund_pending").count(),
         "open_reports": q(Report).filter_by(status="open").count(),
         "critical_reports": q(Report).filter_by(status="open", severity="critical").count(),
     }
@@ -89,7 +98,7 @@ def suspend(user_id: int, x: AdminSuspendIn, a: User = Depends(admin_user), db: 
     if x.suspended:
         for b in db.query(Booking).filter(or_(Booking.customer_id == u.id, Booking.partner_id == u.id),
                                           Booking.status.in_(("requested", "accepted"))).all():
-            b.status, b.status_reason = "cancelled", "Cancelled by PairUp safety team"
+            cancel_booking(db, b, "Cancelled by PairUp safety team", 100)
     audit(db, a.id, "user_suspended" if x.suspended else "user_reinstated", f"user:{user_id}", x.reason)
     db.commit()
     return {"active": u.active}
@@ -125,7 +134,7 @@ def resolve_report(report_id: int, x: AdminResolveIn, a: User = Depends(admin_us
             t.active, t.suspended_reason = False, f"Suspended after report #{r.id}"
             for b in db.query(Booking).filter(or_(Booking.customer_id == t.id, Booking.partner_id == t.id),
                                               Booking.status.in_(("requested", "accepted"))).all():
-                b.status, b.status_reason = "cancelled", "Cancelled by PairUp safety team"
+                cancel_booking(db, b, "Cancelled by PairUp safety team", 100)
             audit(db, a.id, "user_suspended", f"user:{t.id}", f"report #{r.id}")
     notify(db, r.reporter_id, "report", "We've reviewed your report and taken action where needed. Thank you for helping keep PairUp safe.", "")
     audit(db, a.id, "report_resolved", f"report:{r.id}", x.resolution)
@@ -142,3 +151,64 @@ def bookings(a: User = Depends(admin_user), db: Session = Depends(get_db)):
 def audit_log(a: User = Depends(admin_user), db: Session = Depends(get_db)):
     return [{"id": e.id, "actor_id": e.actor_id, "action": e.action, "target": e.target, "detail": e.detail,
              "created_at": e.created_at.isoformat() + "Z"} for e in db.query(AuditLog).order_by(AuditLog.id.desc()).limit(150).all()]
+
+
+# ---------------- finance ----------------
+@router.get("/payouts")
+def payouts(status: str = "requested", a: User = Depends(admin_user), db: Session = Depends(get_db)):
+    qs = db.query(PayoutRequest)
+    if status != "all":
+        qs = qs.filter_by(status=status)
+    out = []
+    for r in qs.order_by(PayoutRequest.id.asc()).limit(200).all():
+        u = db.get(User, r.user_id)
+        out.append({"id": r.id, "user_id": r.user_id, "name": u.name, "amount": r.amount, "upi": r.upi, "account_name": r.account_name,
+                    "status": r.status, "reference": r.reference, "reason": r.reason, "created_at": r.created_at.isoformat() + "Z"})
+    return out
+
+
+@router.patch("/payouts/{payout_id}")
+def decide_payout(payout_id: int, x: AdminPayoutIn, a: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Money is sent manually (UPI) by staff; here they record the UTR, or reject and return the funds."""
+    r = db.get(PayoutRequest, payout_id)
+    if not r or r.status != "requested":
+        raise HTTPException(404, "Payout not found or already processed")
+    if x.paid:
+        if len(x.reference.strip()) < 4:
+            raise HTTPException(400, "Enter the UPI/bank transaction reference (UTR)")
+        r.status, r.reference = "paid", x.reference.strip()
+        notify(db, r.user_id, "payout", f"Your payout of ₹{r.amount} was sent (ref {r.reference}).", "#/earnings")
+    else:
+        if not x.reason.strip():
+            raise HTTPException(400, "Give a reason")
+        r.status, r.reason = "rejected", x.reason.strip()
+        credit(db, r.user_id, r.amount, "payout_reversal", None, f"Payout #{r.id} returned", hold=False)
+        notify(db, r.user_id, "payout", f"Your payout request was declined: {r.reason}. The amount is back in your wallet.", "#/earnings")
+    r.processed_at = utcnow()
+    audit(db, a.id, "payout_paid" if x.paid else "payout_rejected", f"payout:{r.id}", x.reference or x.reason)
+    db.commit()
+    return {"status": r.status}
+
+
+@router.post("/bookings/{booking_id}/retry-refund")
+def retry_refund(booking_id: int, a: User = Depends(admin_user), db: Session = Depends(get_db)):
+    b = db.get(Booking, booking_id)
+    if not b or b.payment_status != "refund_pending":
+        raise HTTPException(400, "This booking has no pending refund")
+    amount = b.refund_amount
+    b.payment_status = "paid"
+    _do_refund(db, b, amount)
+    audit(db, a.id, "refund_retried", f"booking:{b.id}", b.payment_status)
+    db.commit()
+    return {"payment_status": b.payment_status}
+
+
+@router.post("/ledger/adjust")
+def adjust(x: AdminAdjustIn, a: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Manual correction (e.g. a disputed completion). Negative amounts deduct."""
+    if not db.get(User, x.user_id) or x.amount == 0:
+        raise HTTPException(400, "Invalid adjustment")
+    credit(db, x.user_id, x.amount, "adjustment", None, x.note, hold=False)
+    audit(db, a.id, "ledger_adjust", f"user:{x.user_id}", f"{x.amount}: {x.note}")
+    db.commit()
+    return {"ok": True}

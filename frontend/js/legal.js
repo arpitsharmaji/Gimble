@@ -21,6 +21,18 @@ const PAGES = {
     <h2>How we use it</h2><p>To run the marketplace, verify eligibility (18+), keep users safe, prevent fraud and meet legal obligations.</p>
     <h2>Sharing</h2><p>Partners see a customer's first name and booking details; customers see partner profiles you publish. Payments are processed by our payment provider. We don't sell personal data.</p>
     <h2>Your choices</h2><p>You can edit your profile, block users, change your password and delete your account from Account. <i>[Grievance officer, retention periods and cross-border transfer details to be completed.]</i></p>`],
+  refunds: ['Cancellation & refund policy', DRAFT + `
+    <h2>How payment works</h2><p>You pay through PairUp only <b>after the partner accepts</b> your request. PairUp holds the money and releases it to the partner after the plan is completed (plus a 24-hour dispute window).</p>
+    <table><thead><tr><th>Who cancels, and when</th><th>Refund to the customer</th></tr></thead><tbody>
+    <tr><td>Customer, 24 hours or more before the start</td><td>100%</td></tr>
+    <tr><td>Customer, between 2 and 24 hours before</td><td>50%</td></tr>
+    <tr><td>Customer, under 2 hours before / no-show</td><td>0%</td></tr>
+    <tr><td>Partner cancels or doesn't show up</td><td>100%</td></tr>
+    <tr><td>PairUp cancels (safety, suspension)</td><td>100%</td></tr>
+    <tr><td>Payment not completed 30 minutes before the start</td><td>Booking auto-cancelled (nothing charged)</td></tr></tbody></table>
+    <h2>Refund timing</h2><p>Refunds go back to your original payment method and usually take 5-7 working days.</p>
+    <h2>Problems with a plan</h2><p>Book at least 2 hours ahead. Report any problem from your Bookings page within 24 hours, or <a href="#/support">contact support</a>. We can hold and review the partner's earnings while we investigate.</p>
+    <h2>Membership</h2><p>Membership fees are non-refundable once activated, except where required by law. <i>[Confirm with your legal adviser.]</i></p>`],
   standards: ['Community Standards', `
     <h2>Be respectful</h2><p>Treat everyone with courtesy. No harassment, hate, threats or pressure.</p>
     <h2>Keep it non-sexual and public</h2><p>No sexual content, innuendo or adult-service offers - in profiles, photos, chats or booking notes. Meet only in public places.</p>

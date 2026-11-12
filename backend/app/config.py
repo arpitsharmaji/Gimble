@@ -29,6 +29,11 @@ class Settings:
     RATE_LIMIT_ENABLED = _bool("RATE_LIMIT_ENABLED", True)
     TRUST_PROXY = _bool("TRUST_PROXY", False)
 
+    PRIVATE_DIR = Path(os.getenv("PRIVATE_DIR", str(BASE_DIR / "private")))  # KYC files; never served publicly
+    PLATFORM_FEE_PERCENT = int(os.getenv("PLATFORM_FEE_PERCENT", "15"))
+    MIN_PAYOUT_INR = int(os.getenv("MIN_PAYOUT_INR", "500"))
+    PAYOUT_HOLD_HOURS = int(os.getenv("PAYOUT_HOLD_HOURS", "24"))
+    SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@pairup.local")
     UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads")))
     MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))
     PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost:8000").rstrip("/")
@@ -48,6 +53,10 @@ class Settings:
     @property
     def is_production(self) -> bool:
         return self.APP_ENV == "production"
+
+    @property
+    def booking_payments_on(self) -> bool:
+        return self.razorpay_enabled or self.DEMO_PAYMENTS_ENABLED
 
     @property
     def razorpay_enabled(self) -> bool:
@@ -83,3 +92,12 @@ def validate_for_production() -> None:
         problems.append("SEED_DEMO must be false in production")
     if problems:
         raise RuntimeError("Unsafe production configuration: " + "; ".join(problems))
+
+# Cancellation policy for a customer cancelling an accepted, paid booking
+REFUND_FULL_HOURS = 24   # >= 24h before start: 100% refund
+REFUND_HALF_HOURS = 2    # 2-24h before start: 50% refund; under 2h: no refund
+PAY_DEADLINE_MINUTES = 30   # accepted bookings must be paid this long before the start
+MIN_LEAD_MINUTES = 120      # customers must book at least this far ahead
+ACCEPT_MIN_LEAD_MINUTES = 45  # partners can't accept a request this close to the start (no time to pay)
+KYC_ID_TYPES = ["aadhaar", "pan", "passport", "driving_licence", "voter_id"]
+SUPPORT_CATEGORIES = ["booking", "payment_refund", "account", "safety", "partner_application", "other"]
