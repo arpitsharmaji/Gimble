@@ -1,0 +1,37 @@
+services:
+  pairup:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://pairup:pairup_dev_password@db:5432/pairup
+      JWT_SECRET: ${JWT_SECRET:-local-compose-secret-change-before-launch}
+      DEMO_PAYMENTS_ENABLED: ${DEMO_PAYMENTS_ENABLED:-true}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@pairup.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe_Admin_123!}
+      APP_ENV: ${APP_ENV:-development}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./frontend:/frontend
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pairup
+      POSTGRES_USER: pairup
+      POSTGRES_PASSWORD: pairup_dev_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pairup -d pairup"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pairup_pgdata:/var/lib/postgresql/data
+volumes:
+  pairup_pgdata:
