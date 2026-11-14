@@ -277,3 +277,12 @@ def test_ensure_columns_upgrades_old_db(tmp_path):
     with eng.connect() as c:
         row = c.execute(text("SELECT name, paid, status, flag FROM things")).one()
     assert tuple(row) == ("old row", 0, "unpaid", 0)
+
+
+def test_demo_partners_have_illustrated_portraits(client):
+    p = client.get(f"/api/partners/{partner_id(client)}").json()
+    assert len(p["photos"]) >= 2 and p["photo_url"] == p["photos"][0]
+    r = client.get(p["photo_url"])
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    with __import__("PIL.Image", fromlist=["Image"]).open(io.BytesIO(r.content)) as im:
+        assert im.size == (800, 1000)

@@ -1,7 +1,10 @@
-# PairUp - companion booking platform (v3)
+# PairUp - companion booking platform (v4)
 
 FastAPI + SQLAlchemy backend, dependency-free vanilla-JS PWA frontend (served by the backend).
 See **CHANGES.md** for the bugs found in the original upload and everything added.
+
+## What's in v4
+A swipe-first browsing experience, a redesigned landing page and a polished app shell - see **CHANGES.md** and `docs/screenshots/`. First start generates illustrated demo portraits (takes a few seconds).
 
 ## Run locally
 ```bash

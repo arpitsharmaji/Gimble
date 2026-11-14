@@ -6,4 +6,3 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 backend/private/*
 !backend/private/.gitkeep
-.DS_Store

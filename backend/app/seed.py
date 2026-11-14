@@ -5,8 +5,11 @@ from .db import SessionLocal
 from datetime import timedelta
 from .models import User, PartnerProfile, Booking, Review, utcnow
 from .security import hash_password
+from .demo_art import save_portraits
 
 DEMO_PW = "DemoPass123!"
+# hue, hair style, skin tone idx, hair colour idx for the illustrated demo portraits
+ART = {"Aanya": (335, "long", 1, 0), "Rohan": (215, "short", 2, 0), "Meera": (265, "bun", 1, 1), "Kabir": (150, "short", 3, 3), "Ishita": (20, "long", 2, 4)}
 PARTNERS = [
     ("Aanya", "aanya@pairup.local", date(2000, 5, 14), "female", "Gurugram", "Cafe hopper & movie buff",
      "Easygoing and curious; always up for a café, a film or exploring the city. Happy to chat in English or Hindi.",
@@ -52,6 +55,13 @@ def seed():
                                           status="approved", verified=name in ("Aanya", "Meera"), rating=rating,
                                           review_count=n, submitted_at=utcnow()))
         db.commit()
+        if settings.SEED_DEMO:  # illustrated placeholder portraits for demo partners without photos
+            for name, (hue, style, skin, hair) in ART.items():
+                u = db.query(User).filter_by(name=name, role="partner").first()
+                p = db.query(PartnerProfile).filter_by(user_id=u.id).first() if u else None
+                if p and p.status == "approved" and p.photos_json in ("[]", "", None) and u.email.endswith("@pairup.local"):
+                    p.photos_json = json.dumps(save_portraits(settings.UPLOAD_DIR, u.id, hue, style, skin, hair))
+            db.commit()
         if settings.SEED_DEMO and not db.query(Review).count():
             cust = db.query(User).filter_by(email="demo@pairup.local").one()
             demo_reviews = [("aanya@pairup.local", "Coffee date", 399, 5, "Super easy to talk to and really punctual. We picked a busy cafe and it felt completely comfortable."),
@@ -65,6 +75,12 @@ def seed():
                             payment_id="DEMO-SEED", created_at=when - timedelta(days=2), updated_at=when)
                 db.add(b); db.flush()
                 db.add(Review(booking_id=b.id, customer_id=cust.id, partner_id=pu.id, rating=rating, comment=text, created_at=when + timedelta(hours=4)))
+            db.flush()
+            for pu in db.query(User).filter_by(role="partner").all():  # rating/count always reflect real review rows
+                prof = db.query(PartnerProfile).filter_by(user_id=pu.id).first()
+                revs = db.query(Review).filter_by(partner_id=pu.id).all()
+                if prof and pu.email.endswith("@pairup.local"):
+                    prof.review_count, prof.rating = len(revs), (sum(r.rating for r in revs) / len(revs) if revs else 0)
             db.commit()
     finally:
         db.close()

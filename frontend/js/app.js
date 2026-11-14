@@ -1,6 +1,7 @@
+import { reveal } from './fx.js';
 import { html, raw, $, $$, api, state, on, actions, closeModal, toast, refreshMe, modalOpen } from './core.js';
 import { openAuth, verifyPage, resetPage } from './auth.js';
-import { discoverPage, profilePage } from './discover.js';
+import { discoverPage, profilePage, leaveBrowse } from './discover.js';
 import { savedPage, bookingsPage, messagesPage, dashboardPage, accountPage, stopTimers, timers, pollNotifications, renderBadges } from './account.js';
 import { adminPage } from './admin.js';
 import { homePage } from './home.js';
@@ -26,9 +27,10 @@ function renderHeader() {
 const markNav = () => { const p = location.hash.replace(/^#\/?/, '').split('/')[0]; $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === p)); };
 
 async function route() {
-  stopTimers(); if (modalOpen()) closeModal();
+  stopTimers(); leaveBrowse(); if (modalOpen()) closeModal();
   const [pathPart, query = ''] = location.hash.replace(/^#\/?/, '').split('?'); const [path, ...rest] = pathPart.split('/'); const arg = rest.join('/');
-  markNav(); window.scrollTo(0, 0);
+  markNav(); window.scrollTo(0, 0); document.body.dataset.route = path;
+  view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter');
   try {
     switch (path) {
       case '': await homePage(view); break;
@@ -52,6 +54,7 @@ async function route() {
       default: view.innerHTML = html`<div class="page narrow center"><h1>Page not found</h1><a class="btn primary" href="#/">Go home</a></div>`.s;
     }
   } catch (e) { console.error(e); view.innerHTML = html`<div class="page narrow center"><h1>Something went wrong</h1><p class="muted">${e.message}</p><button class="btn primary" data-action="reload">Reload</button></div>`.s; }
+  reveal(view);
   document.title = ({ '': 'PairUp - Meet your kind of company', browse: 'Browse companions · PairUp', faq: 'FAQ · PairUp', refunds: 'Refund policy · PairUp', safety: 'Safety · PairUp', terms: 'Terms · PairUp', privacy: 'Privacy · PairUp' })[path] || 'PairUp';
 }
 actions.reload = () => location.reload();
@@ -71,16 +74,34 @@ function startPolling() {
   pollNotifications(); notifTimer = setInterval(() => { if (!document.hidden) pollNotifications(); }, 30000);
 }
 
-// 18+ gate (the real age check is the date of birth at sign-up)
-function gate() {
+// First-visit onboarding (also the 18+ confirmation; the real age check is the date of birth at sign-up)
+const SLIDES = [
+  ['🫶', 'Plans are better with good company', 'Book friendly, admin-approved companions for coffee, films, workouts and city walks.'],
+  ['🛡️', 'Safe by design', 'Public places only. You pay through PairUp after they accept - never upfront to a stranger.'],
+  ['⇆', 'Swipe to find your kind of company', 'Browse verified profiles like you would on your favourite app. PairUp is for adults 18+ and strictly non-sexual.'],
+];
+function onboarding() {
   if (localStorage.getItem('pairup_18') === '1') return;
   const g = $('#gate'); g.hidden = false; document.body.classList.add('no-scroll');
-  $('#gate-yes').onclick = () => { localStorage.setItem('pairup_18', '1'); g.hidden = true; document.body.classList.remove('no-scroll'); };
-  $('#gate-no').onclick = () => { location.href = 'https://www.google.com'; };
+  g.innerHTML = html`<div class="ob"><div class="ob-bg" aria-hidden="true"><i class="orb o1"></i><i class="orb o2"></i></div>
+    <button class="ob-skip link" id="ob-skip">Skip</button>
+    <div class="ob-track" id="ob-track">${SLIDES.map(([i, t, x]) => html`<section class="ob-slide"><div class="ob-art"><span>${i}</span></div><h2>${t}</h2><p>${x}</p></section>`)}</div>
+    <div class="ob-dots" id="ob-dots">${SLIDES.map((_, i) => html`<i class="${i === 0 ? 'on' : ''}"></i>`)}</div>
+    <div class="ob-actions"><button class="btn primary big block" id="ob-next">Next</button><button class="btn ghost block" id="ob-leave" hidden>Leave</button></div></div>`.s;
+  const track = $('#ob-track'), dots = $$('#ob-dots i'), next = $('#ob-next'), leave = $('#ob-leave');
+  const cur = () => Math.round(track.scrollLeft / track.clientWidth);
+  const sync = () => { const i = cur(); dots.forEach((d, k) => d.classList.toggle('on', k === i)); const last = i === SLIDES.length - 1; next.textContent = last ? "I'm 18 or older - let's go" : 'Next'; leave.hidden = !last; $('#ob-skip').style.visibility = last ? 'hidden' : 'visible'; };
+  const go = i => track.scrollTo ? track.scrollTo({ left: i * track.clientWidth, behavior: 'smooth' }) : (track.scrollLeft = i * track.clientWidth);
+  track.addEventListener('scroll', sync, { passive: true });
+  next.onclick = () => { if (cur() >= SLIDES.length - 1) { localStorage.setItem('pairup_18', '1'); g.hidden = true; g.innerHTML = ''; document.body.classList.remove('no-scroll'); } else go(cur() + 1); };
+  $('#ob-skip').onclick = () => go(SLIDES.length - 1);
+  leave.onclick = () => { location.href = 'https://www.google.com'; };
+  sync();
 }
+window.addEventListener('scroll', () => document.body.classList.toggle('scrolled', window.scrollY > 24), { passive: true });
 
 (async () => {
-  gate(); renderHeader();
+  onboarding(); renderHeader();
   try { state.meta = await api('/meta'); } catch { state.meta = { activity_suggestions: [], min_rate: 50, max_rate: 50000 }; toast('Couldn\'t reach the server. Some features may not work.', 'error'); }
   await refreshMe();
   startPolling();
