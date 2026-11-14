@@ -2,7 +2,7 @@ import logging, smtplib
 from email.message import EmailMessage
 from .config import settings
 
-log = logging.getLogger("pairup.mail")
+log = logging.getLogger("gimble.mail")
 
 
 def send_email(to: str, subject: str, body: str) -> bool:

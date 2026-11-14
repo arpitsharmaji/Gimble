@@ -16,7 +16,7 @@ export function openAuth(mode = 'login', heading) {
       <button class="btn primary block" type="submit">Log in</button>
     </form>
     <div class="row between small"><button class="link" data-action="auth-forgot">Forgot password?</button><button class="link" data-action="auth-register">Create an account</button></div>
-    ${state.meta && state.meta.demo_accounts ? raw(`<p class="notice">Demo accounts: <code>demo@pairup.local</code> (customer), <code>aanya@pairup.local</code> (partner) - password <code>DemoPass123!</code></p>`) : ''}`, { label: 'Log in' });
+    ${state.meta && state.meta.demo_accounts ? raw(`<p class="notice">Demo accounts: <code>demo@gimble.local</code> (customer), <code>aanya@gimble.local</code> (partner) - password <code>DemoPass123!</code></p>`) : ''}`, { label: 'Log in' });
 }
 
 function openRegister(heading) {
@@ -36,7 +36,7 @@ function openRegister(heading) {
         <div><label class="lbl" for="r-gender">Gender (optional)</label><select class="field" id="r-gender" name="gender"><option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="non-binary">Non-binary</option><option value="other">Other</option></select></div>
       </div>
       <label class="lbl" for="r-city">City</label><input class="field" id="r-city" name="city" required minlength="2" placeholder="e.g. Gurugram" autocomplete="address-level2">
-      <label class="check"><input type="checkbox" name="accept_terms" required> <span>I am 18 or older and agree to the <a href="#/terms" data-action="close-modal">Terms</a>, <a href="#/privacy" data-action="close-modal">Privacy Policy</a> and <a href="#/standards" data-action="close-modal">Community Standards</a>. I understand PairUp is for non-sexual, public companionship only.</span></label>
+      <label class="check"><input type="checkbox" name="accept_terms" required> <span>I am 18 or older and agree to the <a href="#/terms" data-action="close-modal">Terms</a>, <a href="#/privacy" data-action="close-modal">Privacy Policy</a> and <a href="#/standards" data-action="close-modal">Community Standards</a>. I understand Gimble is for non-sexual, public companionship only.</span></label>
       <button class="btn primary block" type="submit">Create account</button>
     </form>
     <p class="small center"><button class="link" data-action="auth-login">Already have an account? Log in</button></p>`, { label: 'Create account' });
@@ -91,7 +91,7 @@ export async function verifyPage(root, token) {
   root.innerHTML = '<div class="page narrow"><p class="muted">Verifying your email…</p></div>';
   try {
     await api('/auth/verify-email', { method: 'POST', body: { token } });
-    root.innerHTML = html`<div class="page narrow center"><h1>Email verified ✓</h1><p class="muted">Thanks - your email is confirmed.</p><a class="btn primary" href="#/">Continue to PairUp</a></div>`.s;
+    root.innerHTML = html`<div class="page narrow center"><h1>Email verified ✓</h1><p class="muted">Thanks - your email is confirmed.</p><a class="btn primary" href="#/">Continue to Gimble</a></div>`.s;
     refreshMe();
   } catch (e) {
     root.innerHTML = html`<div class="page narrow center"><h1>Link problem</h1><p class="muted">${e.message}</p><a class="btn primary" href="#/">Back home</a></div>`.s;

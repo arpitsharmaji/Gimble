@@ -42,7 +42,7 @@ export function burst(x, y, glyph = '♥', n = 12) {
 
 export function confetti() {
   if (reduceMotion()) return;
-  const colors = ['#ff4f81', '#ff8a5b', '#ffd27a', '#7be0ad', '#8ab4ff'];
+  const colors = ['#6a3dff', '#e060f8', '#ffd27a', '#7be0ad', '#8ab4ff'];
   for (let i = 0; i < 46; i++) {
     const c = document.createElement('i');
     c.className = 'confetti'; c.style.background = colors[i % colors.length]; c.style.left = Math.random() * 100 + 'vw';

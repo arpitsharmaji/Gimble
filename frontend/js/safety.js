@@ -3,7 +3,7 @@ import { html, api, state, openModal, closeModal, toast, actions, submits, formO
 export const CATEGORIES = {
   sexual_solicitation: 'Sexual or adult-service solicitation',
   harassment: 'Harassment or disrespect',
-  scam_or_payment: 'Scam / asked for money outside PairUp',
+  scam_or_payment: 'Scam / asked for money outside Gimble',
   fake_profile: 'Fake or misleading profile',
   no_show: 'No-show',
   unsafe: 'I felt unsafe',
@@ -22,7 +22,7 @@ export function reportModal(targetId, targetName, bookingId = null) {
 submits.report = async f => {
   const b = formObj(f);
   await api('/reports', { method: 'POST', body: { target_id: Number(b.target_id), booking_id: b.booking_id ? Number(b.booking_id) : null, category: b.category, details: b.details } });
-  closeModal(); toast('Report sent. Thank you for helping keep PairUp safe.', 'ok');
+  closeModal(); toast('Report sent. Thank you for helping keep Gimble safe.', 'ok');
 };
 
 export async function blockUser(id, name) {
@@ -37,10 +37,10 @@ export function safetyModal(booking = null) {
     <div class="sos"><p><b>In danger? Call 112 now.</b></p><a class="btn danger block" href="tel:112">📞 Call 112 (emergency)</a></div>
     <ul class="plain small"><li>Women's helpline: <a href="tel:1091">1091</a></li><li>Cyber-crime helpline: <a href="tel:1930">1930</a></li></ul>
     <hr>
-    <p class="muted small">Alert the PairUp safety team${booking ? html` about your plan with <b>${other}</b>` : ''}. This does not replace calling emergency services.</p>
+    <p class="muted small">Alert the Gimble safety team${booking ? html` about your plan with <b>${other}</b>` : ''}. This does not replace calling emergency services.</p>
     <form data-submit="sos" class="stack"><input type="hidden" name="booking_id" value="${booking ? booking.id : ''}">
     <textarea class="field" name="note" rows="2" maxlength="500" placeholder="What's happening? (optional)"></textarea>
-    <button class="btn ghost block" type="submit">Send alert to PairUp team</button></form>
+    <button class="btn ghost block" type="submit">Send alert to Gimble team</button></form>
     <p class="small center"><a href="#/safety" data-action="close-modal">Read safety tips</a></p>`, { label: 'Safety centre' });
 }
 submits.sos = async f => {

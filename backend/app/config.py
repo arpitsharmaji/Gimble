@@ -16,11 +16,11 @@ def _bool(name: str, default: bool) -> bool:
 
 class Settings:
     APP_ENV = os.getenv("APP_ENV", "development").lower()
-    DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'pairup.db'}")
+    DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'gimble.db'}")
     JWT_SECRET = os.getenv("JWT_SECRET", DEFAULT_JWT)
     ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "10080"))
 
-    ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@pairup.local").lower()
+    ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@gimble.local").lower()
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", DEFAULT_ADMIN_PW)
 
     SEED_DEMO = _bool("SEED_DEMO", os.getenv("APP_ENV", "development").lower() != "production")
@@ -33,7 +33,7 @@ class Settings:
     PLATFORM_FEE_PERCENT = int(os.getenv("PLATFORM_FEE_PERCENT", "15"))
     MIN_PAYOUT_INR = int(os.getenv("MIN_PAYOUT_INR", "500"))
     PAYOUT_HOLD_HOURS = int(os.getenv("PAYOUT_HOLD_HOURS", "24"))
-    SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@pairup.local")
+    SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@gimble.local")
     UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads")))
     MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))
     PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost:8000").rstrip("/")
@@ -48,7 +48,7 @@ class Settings:
     SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USER = os.getenv("SMTP_USER", "")
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-    MAIL_FROM = os.getenv("MAIL_FROM", "PairUp <no-reply@pairup.local>")
+    MAIL_FROM = os.getenv("MAIL_FROM", "Gimble <no-reply@gimble.local>")
 
     @property
     def is_production(self) -> bool:

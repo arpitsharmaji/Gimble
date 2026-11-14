@@ -194,7 +194,7 @@ def test_partner_schedule(client, customer):
     assert client.post("/api/bookings", json=body(next_weekday_utc(6, 12)), headers=customer).status_code == 400   # Sunday: off
     assert client.post("/api/bookings", json=body(next_weekday_utc(2, 23)), headers=customer).status_code == 400   # 23:00: after hours
     assert client.post("/api/bookings", json=body(next_weekday_utc(2, 14)), headers=customer).status_code == 200   # Wed 14:00: ok
-    rh = login(client, "rohan@pairup.local")
+    rh = login(client, "rohan@gimble.local")
     assert client.put("/api/partner/schedule", json={"days": {"funday": ["10:00", "12:00"]}}, headers=rh).status_code == 400
     assert client.put("/api/partner/schedule", json={"days": {"mon": ["10:00", "10:30"]}}, headers=rh).status_code == 400
     assert client.put("/api/partner/schedule", json={"days": {"sun": ["10:00", "14:00"]}}, headers=rh).status_code == 200
@@ -205,7 +205,7 @@ def test_partner_schedule(client, customer):
 # ---------- ID verification (KYC) ----------
 def test_kyc_flow(client, admin):
     from app.config import settings as s
-    meera = login(client, "meera@pairup.local")
+    meera = login(client, "meera@gimble.local")
     files = lambda: {"id_file": ("id.png", png(), "image/png"), "selfie_file": ("me.png", png(), "image/png")}
     assert client.post("/api/partner/kyc", data={"id_type": "library_card"}, files=files(), headers=meera).status_code == 400
     assert client.post("/api/partner/kyc", data={"id_type": "pan"}, files={"id_file": ("x.txt", b"nope", "text/plain"), "selfie_file": ("y.png", png(), "image/png")}, headers=meera).status_code == 400
@@ -255,7 +255,7 @@ def test_home_data_is_real_and_private(client):
 def test_partner_reply_to_review(client, partner):
     revs = client.get(f"/api/partners/{partner_id(client)}/reviews").json()
     bid = revs[0]["booking_id"]
-    other = login(client, "rohan@pairup.local")
+    other = login(client, "rohan@gimble.local")
     assert client.post(f"/api/reviews/{bid}/reply", json={"reply": "Thanks!"}, headers=other).status_code == 404
     assert client.post(f"/api/reviews/{bid}/reply", json={"reply": "Pay me on gpay"}, headers=partner).status_code == 400
     assert client.post(f"/api/reviews/{bid}/reply", json={"reply": "Thank you, it was lovely meeting you!"}, headers=partner).status_code == 200

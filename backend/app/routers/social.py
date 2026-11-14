@@ -197,4 +197,4 @@ def sos(x: SosIn, u: User = Depends(current_user), db: Session = Depends(get_db)
     _notify_admins(db, f"SOS alert from {u.name}" + (f" (booking #{x.booking_id})" if x.booking_id else ""))
     audit(db, u.id, "sos", f"booking:{x.booking_id}")
     db.commit()
-    return {"message": "Alert sent to the PairUp safety team. If you are in danger, call 112 now."}
+    return {"message": "Alert sent to the Gimble safety team. If you are in danger, call 112 now."}

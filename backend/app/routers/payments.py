@@ -12,7 +12,7 @@ from .. import payments
 from ..services import grant_membership, mark_booking_paid, notify, _do_refund, audit
 
 router = APIRouter(prefix="/api", tags=["payments"])
-log = logging.getLogger("pairup.pay")
+log = logging.getLogger("gimble.pay")
 
 
 def activate_order(db: Session, order: PaymentOrder, payment_id: str):
@@ -22,7 +22,7 @@ def activate_order(db: Session, order: PaymentOrder, payment_id: str):
     order.status, order.payment_id = "paid", payment_id
     if order.kind == "membership":
         grant_membership(db, order.user_id, order.plan, f"razorpay:{payment_id}")
-        notify(db, order.user_id, "membership", "Your PairUp membership is active. You can now send booking requests.", "#/browse")
+        notify(db, order.user_id, "membership", "Your Gimble membership is active. You can now send booking requests.", "#/browse")
         return
     b = db.get(Booking, order.booking_id)
     if b and b.status == "accepted":
@@ -93,7 +93,7 @@ def pay_booking(booking_id: int, u: User = Depends(current_user), db: Session = 
                             provider_order_id=order["id"]))
         db.commit()
         return {"mode": "razorpay", "key_id": settings.RAZORPAY_KEY_ID, "order_id": order["id"], "amount": amount,
-                "currency": "INR", "name": "PairUp", "description": f"{b.activity} booking #{b.id}",
+                "currency": "INR", "name": "Gimble", "description": f"{b.activity} booking #{b.id}",
                 "prefill": {"name": u.name, "email": u.email}}
     if settings.DEMO_PAYMENTS_ENABLED:
         return {"mode": "demo", "amount": amount}

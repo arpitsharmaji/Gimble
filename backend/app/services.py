@@ -12,7 +12,7 @@ from .models import (User, PartnerProfile, Membership, Booking, Notification, Bl
 from .security import age_from
 
 
-log = logging.getLogger("pairup.services")
+log = logging.getLogger("gimble.services")
 EMAIL_KINDS = {"booking", "membership", "payment", "payout", "profile", "kyc", "support"}
 IST = timedelta(hours=5, minutes=30)  # India is a single timezone, no DST
 
@@ -24,7 +24,7 @@ def notify(db: Session, user_id: int, kind: str, text: str, link: str = ""):
         u = db.get(User, user_id)
         if u and u.active and not u.email.endswith("@deleted.invalid"):
             threading.Thread(target=send_email, daemon=True,
-                             args=(u.email, "PairUp: " + text[:70], f"{text}\n\n{settings.PUBLIC_URL}/{link}")).start()
+                             args=(u.email, "Gimble: " + text[:70], f"{text}\n\n{settings.PUBLIC_URL}/{link}")).start()
 
 
 def audit(db: Session, actor_id: int | None, action: str, target: str = "", detail: str = ""):

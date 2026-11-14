@@ -23,8 +23,8 @@ def book(client, h, activity="Coffee date", hours=48, **kw):
 
 # ---------- regression tests for bugs found in the original upload ----------
 def test_demo_accounts_can_log_in(client):
-    for e, p in [("demo@pairup.local", "DemoPass123!"), ("aanya@pairup.local", "DemoPass123!"),
-                 ("admin@pairup.local", "ChangeMe_Admin_123!")]:
+    for e, p in [("demo@gimble.local", "DemoPass123!"), ("aanya@gimble.local", "DemoPass123!"),
+                 ("admin@gimble.local", "ChangeMe_Admin_123!")]:
         assert client.post("/api/auth/login", json={"email": e, "password": p}).status_code == 200
 
 

@@ -8,7 +8,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.schema import MetaData
 
-log = logging.getLogger("pairup.migrate")
+log = logging.getLogger("gimble.migrate")
 
 
 def _default_sql(col, dialect: str) -> str:

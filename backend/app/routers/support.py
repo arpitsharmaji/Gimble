@@ -49,7 +49,7 @@ def admin_reply(ticket_id: int, x: AdminTicketIn, a: User = Depends(admin_user),
         raise HTTPException(404, "Ticket not found")
     if x.reply.strip():
         t.admin_reply = x.reply.strip()
-        send_email(t.email, f"Re: your PairUp support request #{t.id}", x.reply.strip())
+        send_email(t.email, f"Re: your Gimble support request #{t.id}", x.reply.strip())
         if t.user_id:
             notify(db, t.user_id, "support", f"We replied to your support ticket #{t.id}", "#/support")
     if x.close:

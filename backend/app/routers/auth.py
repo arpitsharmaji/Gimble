@@ -26,7 +26,7 @@ def _issue_token(db: Session, user: User, purpose: str, minutes: int) -> str:
 def _send_verify(db: Session, user: User) -> str:
     raw = _issue_token(db, user, "verify", 60 * 24)
     link = f"{settings.PUBLIC_URL}/#/verify/{raw}"
-    send_email(user.email, "Verify your PairUp email", f"Hi {user.name},\n\nConfirm your email: {link}\n\nThis link expires in 24 hours.")
+    send_email(user.email, "Verify your Gimble email", f"Hi {user.name},\n\nConfirm your email: {link}\n\nThis link expires in 24 hours.")
     return link
 
 
@@ -39,7 +39,7 @@ def register(x: RegisterIn, db: Session = Depends(get_db)):
     if x.gender not in GENDERS:
         raise HTTPException(400, "Invalid gender option")
     if age_from(x.dob) < 18:
-        raise HTTPException(400, "You must be at least 18 years old to join PairUp")
+        raise HTTPException(400, "You must be at least 18 years old to join Gimble")
     if age_from(x.dob) > 100:
         raise HTTPException(400, "Enter a valid date of birth")
     problem = password_problem(x.password)
@@ -107,7 +107,7 @@ def forgot(x: ForgotIn, db: Session = Depends(get_db)):
     if u:
         raw = _issue_token(db, u, "reset", 30)
         link = f"{settings.PUBLIC_URL}/#/reset/{raw}"
-        send_email(u.email, "Reset your PairUp password", f"Reset your password: {link}\n\nThis link expires in 30 minutes. Ignore this if it wasn't you.")
+        send_email(u.email, "Reset your Gimble password", f"Reset your password: {link}\n\nThis link expires in 30 minutes. Ignore this if it wasn't you.")
         db.commit()
         if not settings.is_production and not settings.SMTP_HOST:
             out["dev_reset_link"] = link

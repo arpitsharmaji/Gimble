@@ -1,4 +1,15 @@
-# PairUp v4 - frontend overhaul (swipe browsing, landing page, polish)
+# Gimble v5 - rebrand
+
+* **New name: Gimble** (was PairUp) everywhere: UI copy, emails, legal pages, API title, Razorpay checkout name, config, database file, Docker names, localStorage keys, demo accounts (`demo@gimble.local`, `aanya@gimble.local`, `admin@gimble.local`).
+* **Your logo** is now the app logo. The white background *and* the white inside the heart are transparent (clean anti-aliased edges, checked on dark, light and checkerboard). Used in the header, footer, welcome screen, landing-page phone mockup, favicon, home-screen/PWA icons (dark tile with safe padding so Android circle/squircle crops look right) and share image tag. Source files are in `docs/brand/`.
+* **Brand colours follow the logo**: the accent moved from coral-pink to the logo's violet -> orchid gradient (buttons, headline, glows, active states, confetti, Razorpay checkout colour). Text on gradient buttons is now white.
+* Upgrade note: login/localStorage keys were renamed, so existing browsers will be signed out once. A dev database created under the old name is simply not picked up (new `gimble.db`).
+
+Verified: 29 backend tests, 55 scripted UI checks, and real Chrome screenshots (`docs/screenshots/gimble_*`).
+
+---
+
+# Gimble v4 - frontend overhaul (swipe browsing, landing page, polish)
 
 **Focus: the experience people see.** Backend is unchanged except demo data (below). Screenshots are in `docs/screenshots/`.
 
@@ -37,7 +48,7 @@ Demo partners now have **illustrated placeholder portraits** generated at first 
 
 ---
 
-# PairUp v3 - what's new
+# Gimble v3 - what's new
 
 v2 fixed the bugs in the original upload (path traversal, broken demo logins, email leak, broken booking rules, etc.). v3 adds the product features a rent-a-companion marketplace needs to actually operate.
 
@@ -45,9 +56,9 @@ v2 fixed the bugs in the original upload (path traversal, broken demo logins, em
 Real home page (`#/`): hero with city + activity search, **live stats from your database (nothing invented)**, how-it-works, popular plans, featured partners, cities, safety section, real testimonials (only appear once reviews exist), membership pricing, partner CTA, FAQ. Plus: Browse (`#/browse`, now accepts `?city=` / `?activity=` links), FAQ, Become-a-partner, Help & Support, Refund policy.
 
 ## Money (booking payments, earnings, payouts, refunds)
-* Customer pays **after the partner accepts**; PairUp holds the money (no more advance-payment scams).
+* Customer pays **after the partner accepts**; Gimble holds the money (no more advance-payment scams).
 * Partner earns price minus platform fee, released to a wallet 24 h after completion (dispute window).
-* Cancellation policy enforced in code: 100% refund if 24 h+ before, 50% at 2-24 h, 0% under 2 h; partner/PairUp cancellations always refund 100%. The retained part compensates the partner.
+* Cancellation policy enforced in code: 100% refund if 24 h+ before, 50% at 2-24 h, 0% under 2 h; partner/Gimble cancellations always refund 100%. The retained part compensates the partner.
 * Unpaid accepted bookings auto-cancel 30 min before start; bookings need 2 h lead time.
 * Partner wallet + ledger, UPI payout requests (needs ID verification, min amount), admin payout queue with UTR recording, reject-returns-funds, manual adjustments, refund retry.
 * Razorpay: order creation, HMAC verification, idempotent webhook for **both** membership and bookings, gateway refunds, auto-refund if someone pays for an already-cancelled booking.

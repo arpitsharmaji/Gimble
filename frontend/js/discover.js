@@ -9,7 +9,7 @@ const DEFAULT_F = { q: '', city: '', activity: '', max_price: '', min_rating: ''
 const F = { ...DEFAULT_F };
 const EMOJI = { 'Video call': '📹', 'Coffee date': '☕', 'Movie companion': '🎬', 'Dinner': '🍽️', 'Shopping': '🛍️', 'Gym partner': '🏋️', 'City exploration': '🌆', 'Event / concert plus-one': '🎤', 'Cafe study partner': '📚', 'Language practice': '🗣️', 'Sports partner': '⚽', 'Museum / gallery visit': '🖼️', 'Board games': '🎲' };
 export const emojiFor = a => EMOJI[a] || '✨';
-let view = localStorage.getItem('pairup_view') || (isMobile() ? 'deck' : 'grid');
+let view = localStorage.getItem('gimble_view') || (isMobile() ? 'deck' : 'grid');
 let items = [], total = 0, loading = false, deckCtl = null, deckIdx = 0, rootEl = null, sentinelIO = null;
 
 const activeFilterCount = () => ['city', 'max_price', 'min_rating', 'gender'].filter(k => F[k]).length + (F.available ? 1 : 0);
@@ -39,7 +39,7 @@ export async function discoverPage(root, params) {
 }
 
 actions.cat = el => { F.activity = el.dataset.a; $$('.cat').forEach(c => c.classList.toggle('on', c === el)); if (el.scrollIntoView) el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); haptic(6); load(true); };
-actions['set-view'] = el => { view = el.dataset.view; localStorage.setItem('pairup_view', view); deckIdx = 0; discoverPage(rootEl); };
+actions['set-view'] = el => { view = el.dataset.view; localStorage.setItem('gimble_view', view); deckIdx = 0; discoverPage(rootEl); };
 actions['reset-filters'] = () => { Object.assign(F, DEFAULT_F); deckIdx = 0; closeModal(); discoverPage(rootEl); };
 actions['retry-load'] = () => load(true);
 
@@ -175,13 +175,13 @@ export async function profilePage(root, id) {
     <div class="pf-body">
       <h1>${p.name}, ${p.age}</h1>
       <p class="muted">⌖ ${p.city} · Member since ${p.member_since} · <span class="${p.available ? 'ok' : 'warn'}">${p.available ? '● Available' : '● Not taking requests'}</span></p>
-      <p class="stars">${p.review_count ? html`<b>${p.rating.toFixed(1)}</b> <span>${stars(p.rating)}</span> <span class="muted">(${p.review_count} verified ${p.review_count === 1 ? 'review' : 'reviews'})</span>` : html`<span class="muted">New on PairUp - no reviews yet</span>`}</p>
+      <p class="stars">${p.review_count ? html`<b>${p.rating.toFixed(1)}</b> <span>${stars(p.rating)}</span> <span class="muted">(${p.review_count} verified ${p.review_count === 1 ? 'review' : 'reviews'})</span>` : html`<span class="muted">New on Gimble - no reviews yet</span>`}</p>
       ${p.headline ? html`<p class="headline big">${p.headline}</p>` : ''}
       <div class="pf-card"><h3>About</h3><p class="bio">${p.bio}</p>${p.languages.length ? html`<p class="small"><b>Speaks:</b> ${p.languages.join(', ')}</p>` : ''}
       ${Object.keys(p.schedule || {}).length ? html`<p class="small"><b>Usually available:</b> ${Object.entries(p.schedule).map(([k, w]) => `${k[0].toUpperCase() + k.slice(1)} ${w[0]}-${w[1]}`).join(' · ')} <span class="muted">(IST)</span></p>` : ''}</div>
       <div class="pf-card"><h3>Activities &amp; rates</h3><div class="rate-list" role="radiogroup" aria-label="Choose an activity">${rates.map(([a, v]) => html`<label class="rate-row ${a === selAct ? 'sel' : ''}"><span><input type="radio" name="rate" value="${a}" ${a === selAct ? 'checked' : ''} data-action="pick-rate"> ${emojiFor(a)} ${a}</span><strong>${inr(v)}</strong></label>`)}</div>
-      <p class="muted small">Per session. You pay <b>after the partner accepts</b>; PairUp holds the money until your plan is done. <a href="#/refunds">Cancellation &amp; refunds</a></p></div>
-      <div class="notice">🛡 Meet in public places · never pay outside PairUp · no sexual services. <a href="#/safety">Safety tips</a></div>
+      <p class="muted small">Per session. You pay <b>after the partner accepts</b>; Gimble holds the money until your plan is done. <a href="#/refunds">Cancellation &amp; refunds</a></p></div>
+      <div class="notice">🛡 Meet in public places · never pay outside Gimble · no sexual services. <a href="#/safety">Safety tips</a></div>
       ${!own ? html`<div class="row small"><button class="link" data-action="report-user" data-id="${p.id}" data-name="${p.name}">Report</button><button class="link" data-action="block-user" data-id="${p.id}" data-name="${p.name}">Block</button></div>` : ''}
       <h2>Reviews</h2>${reviews.length ? html`<div class="reviews">${reviews.map(r => html`<div class="review"><div class="between"><b>${r.reviewer}</b><span class="stars">${stars(r.rating)}</span></div><p>${r.comment || html`<span class="muted">No written comment.</span>`}</p><p class="muted small">${fmtD(r.created_at)} · verified booking</p>${r.partner_reply ? html`<div class="reply"><b>${p.name} replied:</b> ${r.partner_reply}</div>` : ''}</div>`)}</div>` : html`<p class="muted">No reviews yet. Only customers with a completed booking can review.</p>`}
     </div></div>
@@ -193,7 +193,7 @@ export async function profilePage(root, id) {
 actions['pick-rate'] = el => { selAct = el.value; $$('.rate-row').forEach(r => r.classList.toggle('sel', r.contains(el))); };
 actions['share-profile'] = async el => {
   const url = location.href;
-  try { if (navigator.share) await navigator.share({ title: `${el.dataset.name} on PairUp`, url }); else { await navigator.clipboard.writeText(url); toast('Link copied.', 'ok'); } } catch { /* cancelled */ }
+  try { if (navigator.share) await navigator.share({ title: `${el.dataset.name} on Gimble`, url }); else { await navigator.clipboard.writeText(url); toast('Link copied.', 'ok'); } } catch { /* cancelled */ }
 };
 actions['report-user'] = el => login(() => reportModal(Number(el.dataset.id), el.dataset.name));
 actions['block-user'] = el => login(async () => { if (await blockUser(Number(el.dataset.id), el.dataset.name)) location.hash = '#/browse'; });
@@ -220,9 +220,9 @@ function bookingForm(p, activity) {
     <div><label class="lbl" for="b-dur">Duration</label><select class="field" id="b-dur" name="duration_minutes">${[1, 2, 3, 4, 6, 8].map(h => html`<option value="${h * 60}">${h} hour${h > 1 ? 's' : ''}</option>`)}</select></div></div>
     <label class="lbl" for="b-loc">Public meeting place</label><input class="field" id="b-loc" name="location" required minlength="3" maxlength="200" placeholder="e.g. Starbucks, CyberHub, Gurugram">
     <label class="lbl" for="b-note">Note (optional)</label><textarea class="field" id="b-note" name="note" rows="2" maxlength="1000" placeholder="Anything helpful for the partner"></textarea>
-    <label class="check"><input type="checkbox" name="safety_ack" required> <span>I'll meet in a public place, respect boundaries, keep payments on PairUp, and understand sexual services are not allowed.</span></label>
+    <label class="check"><input type="checkbox" name="safety_ack" required> <span>I'll meet in a public place, respect boundaries, keep payments on Gimble, and understand sexual services are not allowed.</span></label>
     <button class="btn primary block" type="submit">Send booking request</button>
-    <p class="muted small center">Nothing is charged now. If the partner accepts, you'll pay securely through PairUp to confirm the plan. <a href="#/refunds" data-action="close-modal">Refund policy</a></p></form>`, { label: 'Booking request' });
+    <p class="muted small center">Nothing is charged now. If the partner accepts, you'll pay securely through Gimble to confirm the plan. <a href="#/refunds" data-action="close-modal">Refund policy</a></p></form>`, { label: 'Booking request' });
 }
 submits.booking = async f => {
   const b = formObj(f);

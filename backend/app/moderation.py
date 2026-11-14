@@ -1,4 +1,4 @@
-"""Content rules. PairUp is for non-sexual, public companionship only."""
+"""Content rules. Gimble is for non-sexual, public companionship only."""
 import re
 
 _SEXUAL = re.compile(
@@ -18,7 +18,7 @@ _PHONE = re.compile(r"(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}(?!\d)")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 _LINK = re.compile(r"(https?://|www\.|t\.me/|wa\.me/|instagram\.com|snapchat)", re.I)
 
-RULE = "PairUp is for non-sexual, public companionship only."
+RULE = "Gimble is for non-sexual, public companionship only."
 
 
 def check_text(text: str, context: str = "profile") -> str | None:

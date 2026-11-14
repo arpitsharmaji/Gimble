@@ -6,3 +6,9 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 backend/private/*
 !backend/private/.gitkeep
+
+# macOS
+.DS_Store
+
+# Local project archive / duplicate
+gimble_v5/

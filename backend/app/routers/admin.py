@@ -98,7 +98,7 @@ def suspend(user_id: int, x: AdminSuspendIn, a: User = Depends(admin_user), db: 
     if x.suspended:
         for b in db.query(Booking).filter(or_(Booking.customer_id == u.id, Booking.partner_id == u.id),
                                           Booking.status.in_(("requested", "accepted"))).all():
-            cancel_booking(db, b, "Cancelled by PairUp safety team", 100)
+            cancel_booking(db, b, "Cancelled by Gimble safety team", 100)
     audit(db, a.id, "user_suspended" if x.suspended else "user_reinstated", f"user:{user_id}", x.reason)
     db.commit()
     return {"active": u.active}
@@ -134,9 +134,9 @@ def resolve_report(report_id: int, x: AdminResolveIn, a: User = Depends(admin_us
             t.active, t.suspended_reason = False, f"Suspended after report #{r.id}"
             for b in db.query(Booking).filter(or_(Booking.customer_id == t.id, Booking.partner_id == t.id),
                                               Booking.status.in_(("requested", "accepted"))).all():
-                cancel_booking(db, b, "Cancelled by PairUp safety team", 100)
+                cancel_booking(db, b, "Cancelled by Gimble safety team", 100)
             audit(db, a.id, "user_suspended", f"user:{t.id}", f"report #{r.id}")
-    notify(db, r.reporter_id, "report", "We've reviewed your report and taken action where needed. Thank you for helping keep PairUp safe.", "")
+    notify(db, r.reporter_id, "report", "We've reviewed your report and taken action where needed. Thank you for helping keep Gimble safe.", "")
     audit(db, a.id, "report_resolved", f"report:{r.id}", x.resolution)
     db.commit()
     return {"status": r.status}

@@ -2,7 +2,7 @@ import { html, api, state, $, $$, toast, actions, submits, formObj, inr, fmtDT, 
 
 const needPartner = root => { root.innerHTML = html`<div class="page narrow center"><h1>Partner area</h1><p class="muted">Log in with a partner account to see this page.</p><button class="btn primary" data-action="auth-login">Log in</button></div>`.s; };
 const isPartner = () => state.me && state.me.role === 'partner';
-const KIND = { earning: 'Booking earning', cancel_compensation: 'Late-cancellation compensation', payout: 'Payout requested', payout_reversal: 'Payout returned', adjustment: 'Adjustment by PairUp' };
+const KIND = { earning: 'Booking earning', cancel_compensation: 'Late-cancellation compensation', payout: 'Payout requested', payout_reversal: 'Payout returned', adjustment: 'Adjustment by Gimble' };
 
 // ====================== EARNINGS ======================
 export async function earningsPage(root) {
@@ -12,7 +12,7 @@ export async function earningsPage(root) {
     const w = await api('/wallet'), d = w.payout_details;
     root.innerHTML = html`<div class="page"><a class="back" href="#/dashboard">← Dashboard</a><h1>Earnings &amp; payouts</h1>
       <div class="stats"><div><b>${inr(w.available)}</b><span>Available to withdraw</span></div><div><b>${inr(w.pending)}</b><span>On ${w.hold_hours}h hold</span></div><div><b>${inr(w.balance)}</b><span>Wallet balance</span></div></div>
-      <p class="muted small">You keep ${100 - w.fee_percent}% of every completed booking (PairUp fee ${w.fee_percent}%). Earnings are released ${w.hold_hours} hours after completion so any issue can be reported first. Minimum payout ${inr(w.min_payout)}, sent to your UPI ID within 2 working days.</p>
+      <p class="muted small">You keep ${100 - w.fee_percent}% of every completed booking (Gimble fee ${w.fee_percent}%). Earnings are released ${w.hold_hours} hours after completion so any issue can be reported first. Minimum payout ${inr(w.min_payout)}, sent to your UPI ID within 2 working days.</p>
       ${!w.verified ? html`<div class="notice warn">Verify your ID to unlock withdrawals. <a href="#/verify-id">Start verification →</a></div>` : ''}
       <h2>Payout details</h2><form data-submit="payout-details" class="stack"><label class="lbl" for="upi">UPI ID</label><input class="field" id="upi" name="upi" value="${d.upi}" placeholder="yourname@okaxis" required autocomplete="off">
         <label class="lbl" for="acn">Name on the UPI account</label><input class="field" id="acn" name="name" value="${d.name}" maxlength="80"><button class="btn ghost" type="submit">Save payout details</button></form>
@@ -58,7 +58,7 @@ export async function kycPage(root) {
       <form data-submit="kyc" class="stack"><label class="lbl" for="k-type">Government ID type</label><select class="field" id="k-type" name="id_type" required>${k.id_types.map(t => html`<option value="${t}">${t.replace('_', ' ').replace(/^./, c => c.toUpperCase())}</option>`)}</select>
       <label class="lbl" for="k-id">Photo of your ID (all four corners visible)</label><input class="field" id="k-id" name="id_file" type="file" accept="image/jpeg,image/png,image/webp" required>
       <label class="lbl" for="k-self">Selfie holding the same ID</label><input class="field" id="k-self" name="selfie_file" type="file" accept="image/jpeg,image/png,image/webp" required capture="user">
-      <div class="notice">🔒 <b>Privacy:</b> files are stored privately, only PairUp admins can open them, and they are <b>deleted as soon as we decide</b> - we keep only the result. For Aadhaar, cover the first 8 digits before photographing.</div>
+      <div class="notice">🔒 <b>Privacy:</b> files are stored privately, only Gimble admins can open them, and they are <b>deleted as soon as we decide</b> - we keep only the result. For Aadhaar, cover the first 8 digits before photographing.</div>
       <button class="btn primary block" type="submit">Submit for verification</button></form>` : ''}</div>`.s;
   } catch (e) { root.innerHTML = html`<div class="page"><p class="err">${e.message}</p></div>`.s; }
 }

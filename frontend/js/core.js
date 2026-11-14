@@ -1,7 +1,7 @@
 // Core: state, API client, safe templating, modal, toast, helpers.
 export const state = {
-  token: localStorage.getItem('pairup_token') || '',
-  me: JSON.parse(localStorage.getItem('pairup_user') || 'null'),
+  token: localStorage.getItem('gimble_token') || '',
+  me: JSON.parse(localStorage.getItem('gimble_user') || 'null'),
   favs: new Set(),
   meta: null,
   unread: { n: 0, msgs: 0 },
@@ -51,20 +51,20 @@ export async function api(path, { method = 'GET', body, form } = {}) {
 
 export function setAuth(data) {
   state.token = data.access_token; state.me = data.user;
-  localStorage.setItem('pairup_token', state.token);
-  localStorage.setItem('pairup_user', JSON.stringify(state.me));
+  localStorage.setItem('gimble_token', state.token);
+  localStorage.setItem('gimble_user', JSON.stringify(state.me));
   emit('auth'); emit('authchange');
 }
 export function clearAuth() {
   state.token = ''; state.me = null; state.favs = new Set(); state.unread = { n: 0, msgs: 0 };
-  localStorage.removeItem('pairup_token'); localStorage.removeItem('pairup_user');
+  localStorage.removeItem('gimble_token'); localStorage.removeItem('gimble_user');
   emit('auth'); emit('authchange');
 }
 export async function refreshMe() {
   if (!state.token) return;
   try {
     state.me = await api('/auth/me');
-    localStorage.setItem('pairup_user', JSON.stringify(state.me));
+    localStorage.setItem('gimble_user', JSON.stringify(state.me));
     if (state.me.role === 'customer') state.favs = new Set(await api('/favorites/ids'));
   } catch { /* api() already handled 401 */ }
   emit('auth');
@@ -182,7 +182,7 @@ export const loadScript = src => _scripts[src] ||= new Promise((res, rej) => {
 export async function openRazorpay(co, onSuccess) {
   await loadScript('https://checkout.razorpay.com/v1/checkout.js');
   const rzp = new window.Razorpay({ key: co.key_id, amount: co.amount, currency: co.currency, name: co.name, description: co.description,
-    order_id: co.order_id, prefill: co.prefill, theme: { color: '#ff648d' },
+    order_id: co.order_id, prefill: co.prefill, theme: { color: '#6a3dff' },
     handler: async resp => { try { await onSuccess(resp); } catch (e) { toast(e.message + ' If you were charged, this will be confirmed automatically within a few minutes.', 'error'); } } });
   rzp.on('payment.failed', () => toast('Payment failed. You have not been charged. Please try again.', 'error'));
   rzp.open();

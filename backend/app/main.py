@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="PairUp API", version="3.0.0", lifespan=lifespan,
+app = FastAPI(title="Gimble API", version="3.0.0", lifespan=lifespan,
               description="Companion discovery, booking and safety platform",
               docs_url=None if settings.is_production else "/docs",
               redoc_url=None, openapi_url=None if settings.is_production else "/openapi.json")
@@ -57,7 +57,7 @@ async def security_headers(request: Request, call_next):
 def health():
     with SessionLocal() as db:
         db.execute(text("SELECT 1"))
-    return {"status": "ok", "service": "PairUp API", "version": app.version}
+    return {"status": "ok", "service": "Gimble API", "version": app.version}
 
 
 @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)

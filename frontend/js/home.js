@@ -7,17 +7,17 @@ import { timers } from './account.js';
 const STEPS = [
   ['🔍', 'Browse or swipe', 'Filter by city, activity and price - or just swipe through profiles like you would on your favourite app.'],
   ['📅', 'Request a plan', 'Pick an activity, time and a public meeting spot. Your partner confirms.'],
-  ['🔒', 'Pay once accepted', 'You pay through PairUp. We hold the money until your plan is done - never upfront to a stranger.'],
+  ['🔒', 'Pay once accepted', 'You pay through Gimble. We hold the money until your plan is done - never upfront to a stranger.'],
   ['☕', 'Meet & review', 'Meet in public, have a great time, then leave a verified review.'],
 ];
 const BENTO = [
   ['🪪', 'ID-verified partners', 'Government ID + selfie check earns a ✓ badge.'],
-  ['🔒', 'Pay after they accept', 'Money is held by PairUp and released after the plan - zero advance-payment scams.'],
+  ['🔒', 'Pay after they accept', 'Money is held by Gimble and released after the plan - zero advance-payment scams.'],
   ['🧹', 'Moderated by design', 'Sexual wording, scams and off-platform payment requests are blocked automatically.'],
   ['↩', 'Fair refunds', 'Full refund if a partner cancels. Clear policy for the rest.'],
   ['⭐', 'Reviews you can trust', 'Only customers with a completed booking can review.'],
 ];
-const TILE_BG = ['linear-gradient(135deg,#ff4f81,#ff8a5b)', 'linear-gradient(135deg,#7c5cff,#c05cff)', 'linear-gradient(135deg,#00b3a4,#5be7a9)', 'linear-gradient(135deg,#ff9d3d,#ffd27a)', 'linear-gradient(135deg,#3d7bff,#7be0ff)', 'linear-gradient(135deg,#ff5c8a,#ffb199)', 'linear-gradient(135deg,#8a5cff,#ff6fae)', 'linear-gradient(135deg,#17b890,#8ae26b)'];
+const TILE_BG = ['linear-gradient(135deg,#5b2bff,#a13cf7)', 'linear-gradient(135deg,#d6338a,#ff7a59)', 'linear-gradient(135deg,#0e9f9a,#34d399)', 'linear-gradient(135deg,#e08a00,#ef5a35)', 'linear-gradient(135deg,#2563eb,#38bdf8)', 'linear-gradient(135deg,#7c3aed,#ec4899)', 'linear-gradient(135deg,#c026d3,#f97316)', 'linear-gradient(135deg,#059669,#84cc16)'];
 
 const avatar = p => p.photo_url ? html`<img src="${p.photo_url}" alt="" loading="lazy">` : html`<span class="ph-mini" style="--h:${hue(p.name)}">${initials(p.name)}</span>`;
 
@@ -46,15 +46,15 @@ export async function homePage(root) {
     <div class="h4-text">
       <p class="pill-eyebrow"><span class="live-dot"></span> 18+ · Public meet-ups only · Safety first</p>
       <h1>Plans are better with <em>good company.</em></h1>
-      <p class="sub">Book friendly, admin-approved companions for coffee, films, workouts and city walks - always in public, always paid safely through PairUp.</p>
+      <p class="sub">Book friendly, admin-approved companions for coffee, films, workouts and city walks - always in public, always paid safely through Gimble.</p>
       <div class="cta-row"><a class="btn primary big glow" href="#/browse" data-action="start-swiping">Start swiping →</a><button class="btn ghost big" data-action="scroll-how">How it works</button></div>
       <form class="search-pill" data-submit="home-search" role="search"><label><span>Where</span><input name="city" list="home-cities" placeholder="Your city" value="${state.me ? state.me.city : ''}" autocomplete="off"></label><datalist id="home-cities">${d.cities.map(c => html`<option value="${c.city}">`)}</datalist>
         <label><span>What</span><select name="activity"><option value="">Any activity</option>${acts.map(a => html`<option>${a}</option>`)}</select></label><button class="btn primary" type="submit" aria-label="Search">Search</button></form>
       <div class="proof">${mock.length ? html`<div class="avatars">${mock.map(avatar)}</div>` : ''}<p>${avg ? html`<b>★ ${avg.toFixed(1)}</b> average from <b>${revN}</b> verified ${revN === 1 ? 'review' : 'reviews'}` : html`<b>New &amp; growing</b> - be among the first members`}</p></div>
     </div>
     <div class="h4-art" aria-hidden="true">
-      <div class="phone"><i class="notch"></i><div class="phone-screen"><div class="pm-top"><b>✦ pairup</b><span>🔔</span></div>
-        <div class="pm-stack" id="pmStack">${mock.length ? mock.map(mockCard) : html`<div class="pm-card" data-pos="0"><div class="ph full" style="--h:330"><span>✦</span></div></div>`}</div>
+      <div class="phone"><i class="notch"></i><div class="phone-screen"><div class="pm-top"><b class="pm-brand"><img src="/logo-sm.png" alt="" width="22" height="18"> gimble</b><span>🔔</span></div>
+        <div class="pm-stack" id="pmStack">${mock.length ? mock.map(mockCard) : html`<div class="pm-card" data-pos="0"><div class="ph full" style="--h:270"><span>G</span></div></div>`}</div>
         <div class="pm-actions"><i>✕</i><i class="s">♥</i><i>📅</i></div></div></div>
       <div class="fbadge fb1"><b>✓ ID verified</b><span>Reviewed by our team</span></div><div class="fbadge fb2"><b>☕ Coffee date</b><span>Sat · 4:00 PM · CyberHub</span></div><div class="fbadge fb3"><b>🔒 Paid safely</b><span>Held until it's done</span></div></div>
   </section>
@@ -70,7 +70,7 @@ export async function homePage(root) {
   ${d.testimonials.length ? html`<section class="section rv"><p class="kicker">LOVED BY MEMBERS</p><h2>Real reviews, real plans</h2><div class="testi">${d.testimonials.map(t => html`<blockquote><span class="stars">${stars(t.rating)}</span><p>“${t.comment}”</p><footer>${t.reviewer} · plan with ${t.partner}</footer></blockquote>`)}</div></section>` : ''}
   <section class="section earn rv"><div class="earn-text"><p class="kicker">FOR PARTNERS</p><h2>Turn your good company into income</h2><p class="muted">Set your own rates and hours. Keep ${100 - fee}% of every completed booking, paid out to UPI. See what a few plans a week could add up to:</p>
     <div class="calc"><label>Plans per week <b id="cs-v">4</b><input type="range" id="calc-s" min="1" max="15" value="4"></label><label>Average rate <b id="cr-v">₹500</b><input type="range" id="calc-r" min="200" max="1500" step="50" value="500"></label>
-      <div class="calc-out"><span>Estimated monthly earnings</span><strong id="calc-total">₹0</strong><small>After PairUp's ${fee}% fee. Illustrative only - not a guarantee. Taxes are your responsibility.</small></div></div>
+      <div class="calc-out"><span>Estimated monthly earnings</span><strong id="calc-total">₹0</strong><small>After Gimble's ${fee}% fee. Illustrative only - not a guarantee. Taxes are your responsibility.</small></div></div>
     <a class="btn primary big" href="#/become-a-partner">Become a partner</a></div>
     <div class="earn-art" aria-hidden="true"><div class="ecard e1"><b>+ ${inr(399 - Math.round(399 * fee / 100))}</b><span>Coffee date · Sat</span></div><div class="ecard e2"><b>+ ${inr(499 - Math.round(499 * fee / 100))}</b><span>Movie companion</span></div><div class="ecard e3"><b>✓ Payout sent</b><span>to your UPI</span></div></div></section>
   ${plans && plans.plans ? html`<section class="section rv"><p class="kicker">SIMPLE PRICING</p><h2>Browsing is free</h2><p class="muted center">A membership lets you send booking requests. Each plan is then paid at the partner's own rate.</p><div class="plans wide">${plans.plans.map((p, i) => html`<div class="plan-card ${i ? '' : 'hot'}">${i ? '' : html`<i>Popular</i>`}<b>${p.label}</b><strong>${inr(p.amount)}</strong><small>${p.days} days of booking requests</small></div>`)}</div></section>` : ''}
@@ -104,5 +104,5 @@ submits['home-search'] = async f => {
   for (const k of ['city', 'activity']) if (fd.get(k)) p.set(k, fd.get(k));
   location.hash = '#/browse' + (p.toString() ? '?' + p : '');
 };
-actions['start-swiping'] = () => { localStorage.setItem('pairup_view', 'deck'); };
+actions['start-swiping'] = () => { localStorage.setItem('gimble_view', 'deck'); };
 actions['scroll-how'] = () => { const el = document.getElementById('how'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };

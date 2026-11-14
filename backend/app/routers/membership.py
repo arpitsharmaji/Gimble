@@ -10,7 +10,7 @@ from ..services import active_membership, grant_membership
 import logging
 
 router = APIRouter(prefix="/api", tags=["membership"])
-log = logging.getLogger("pairup.pay")
+log = logging.getLogger("gimble.pay")
 
 
 def _require_customer(u: User):
@@ -39,14 +39,14 @@ def checkout(x: CheckoutIn, u: User = Depends(current_user), db: Session = Depen
     amount_paise = PLANS[x.plan]["amount"] * 100
     if settings.razorpay_enabled:
         try:
-            order = payments.create_order(amount_paise, f"pairup-{u.id}-{x.plan}", {"user_id": str(u.id), "plan": x.plan})
+            order = payments.create_order(amount_paise, f"gimble-{u.id}-{x.plan}", {"user_id": str(u.id), "plan": x.plan})
         except Exception:
             log.exception("Razorpay order creation failed")
             raise HTTPException(502, "Payment provider is unavailable. Please try again shortly.")
         db.add(PaymentOrder(user_id=u.id, plan=x.plan, kind="membership", amount_paise=amount_paise, provider_order_id=order["id"]))
         db.commit()
         return {"mode": "razorpay", "key_id": settings.RAZORPAY_KEY_ID, "order_id": order["id"],
-                "amount": amount_paise, "currency": "INR", "name": "PairUp", "description": f"{PLANS[x.plan]['label']} membership",
+                "amount": amount_paise, "currency": "INR", "name": "Gimble", "description": f"{PLANS[x.plan]['label']} membership",
                 "prefill": {"name": u.name, "email": u.email}}
     if settings.DEMO_PAYMENTS_ENABLED:
         return {"mode": "demo", "amount": amount_paise}

@@ -42,7 +42,7 @@ function payLine(b, isP) {
   if (b.payment_status === 'partially_refunded') return html`<p class="small warn">↩ Partly refunded (${inr(b.refund_amount)}) under the cancellation policy</p>`;
   if (b.payment_status === 'refund_pending') return html`<p class="small warn">↩ Refund of ${inr(b.refund_amount)} is being processed</p>`;
   if (b.status === 'accepted' && b.payments_on) {
-    if (b.payment_status === 'paid') return html`<p class="small ok">✓ Paid ${inr(b.paid_amount)} · held safely by PairUp until your plan is done${isP ? html` · you'll earn <b>${inr(b.partner_earning)}</b>` : ''}</p>`;
+    if (b.payment_status === 'paid') return html`<p class="small ok">✓ Paid ${inr(b.paid_amount)} · held safely by Gimble until your plan is done${isP ? html` · you'll earn <b>${inr(b.partner_earning)}</b>` : ''}</p>`;
     return isP ? html`<p class="small warn">⏳ Waiting for the customer to pay (they must pay by ${fmtDT(b.pay_deadline)})</p>`
       : html`<div class="paybox"><span>Pay <b>${inr(b.price)}</b> by ${fmtDT(b.pay_deadline)} to confirm this plan.</span><button class="btn primary sm" data-action="pay-booking" data-id="${b.id}">Pay ${inr(b.price)}</button></div>`;
   }
@@ -175,7 +175,7 @@ export async function dashboardPage(root) {
     root.innerHTML = html`<div class="page"><h1>Partner dashboard</h1>
       <div class="notice ${banner[0]}">${banner[1]}${p.status === 'approved' ? html` <a href="#/p/${p.id}">View public profile</a>` : ''}</div>
       <div class="stats"><div><b>${pending.length}</b><span>Pending requests</span></div><div><b>${done.length}</b><span>Completed</span></div><div><b>${p.review_count ? p.rating.toFixed(1) : '-'}</b><span>Rating</span></div><div><b>${inr(done.reduce((s, b) => s + b.price, 0))}</b><span>Booked value*</span></div></div>
-      <p class="muted small">*Sum of completed booking prices. PairUp doesn't process booking payments or payouts in this build.</p>
+      <p class="muted small">*Sum of completed booking prices. Gimble doesn't process booking payments or payouts in this build.</p>
       <div class="tiles"><a class="tile" href="#/earnings"><b>💰 Earnings &amp; payouts</b><span>Wallet, UPI payouts</span></a><a class="tile" href="#/verify-id"><b>${p.verified ? '✓ ID verified' : '🪪 Get ID verified'}</b><span>${p.verified ? 'Badge active' : 'Needed for payouts'}</span></a><a class="tile" href="#/schedule"><b>🗓 Weekly hours</b><span>${Object.keys(p.schedule || {}).length ? Object.keys(p.schedule).length + ' days set' : 'Any time'}</span></a></div>
       <label class="switch"><input type="checkbox" id="avail" data-action="toggle-avail" ${p.available ? 'checked' : ''}><span></span> Accepting booking requests</label>
       ${pending.length ? html`<h2>Pending requests</h2><div class="list">${pending.map(b => html`<div class="item"><b>${b.activity}</b> <span class="muted">from ${b.customer_name}</span><p class="muted small">${fmtDT(b.scheduled_at)} · ${inr(b.price)} · 📍 ${b.location}</p><a class="btn primary sm" href="#/bookings">Respond</a></div>`)}</div>` : ''}

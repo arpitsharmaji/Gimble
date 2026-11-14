@@ -1,6 +1,6 @@
 // Network-first for the app shell so updates always arrive; cache is only an offline fallback.
-const CACHE = "pairup-shell-v5";
-const SHELL = ["/", "/index.html", "/styles.css", "/manifest.webmanifest", "/fonts/inter-latin-wght-normal.woff2", "/fonts/bricolage-grotesque-latin-wght-normal.woff2", "/fonts/instrument-serif-latin-400-italic.woff2", "/icons/icon.svg",
+const CACHE = "gimble-shell-v6";
+const SHELL = ["/", "/index.html", "/styles.css", "/manifest.webmanifest", "/fonts/inter-latin-wght-normal.woff2", "/fonts/bricolage-grotesque-latin-wght-normal.woff2", "/fonts/instrument-serif-latin-400-italic.woff2", "/logo-sm.png", "/logo.png",
   "/js/app.js", "/js/core.js", "/js/auth.js", "/js/discover.js", "/js/account.js", "/js/admin.js", "/js/safety.js", "/js/legal.js", "/js/home.js", "/js/fx.js", "/js/deck.js", "/js/pages.js", "/js/wallet.js"];
 self.addEventListener("install", e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch(() => {}))); });
 self.addEventListener("activate", e => e.waitUntil((async () => {

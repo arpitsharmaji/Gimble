@@ -149,7 +149,7 @@ def _clean_profile(x: ProfileIn, u: User) -> dict:
     photos = []
     for url in x.photos:
         if not re.fullmatch(rf"/uploads/u{u.id}_[0-9a-f]{{16}}\.jpg", url) or not (settings.UPLOAD_DIR / url.split("/")[-1]).is_file():
-            raise HTTPException(400, "Photos must be uploaded through PairUp")
+            raise HTTPException(400, "Photos must be uploaded through Gimble")
         photos.append(url)
     return {"headline": headline, "bio": bio, "activities": activities, "rates": rates,
             "languages": languages, "photos": photos}

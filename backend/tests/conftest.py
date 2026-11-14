@@ -24,11 +24,11 @@ def login(client, email, pw="DemoPass123!"):
 
 
 @pytest.fixture(scope="session")
-def customer(client): return login(client, "demo@pairup.local")
+def customer(client): return login(client, "demo@gimble.local")
 @pytest.fixture(scope="session")
-def partner(client): return login(client, "aanya@pairup.local")
+def partner(client): return login(client, "aanya@gimble.local")
 @pytest.fixture(scope="session")
-def admin(client): return login(client, "admin@pairup.local", "ChangeMe_Admin_123!")
+def admin(client): return login(client, "admin@gimble.local", "ChangeMe_Admin_123!")
 
 
 def future(hours=48):
