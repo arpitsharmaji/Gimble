@@ -1,3 +1,30 @@
+# Gimble v6 - UI polish pass (bookings, chat, dashboard, account, booking flow)
+
+The browse / landing / profile pages already had the new look; v6 brings the rest of the app up to the same standard.
+
+**Booking flow**: the raw date box is replaced by a Calendly-style picker: next 14 days, 30-minute time slots that respect the partner's weekly hours and the 2-hour lead time, duration chips, public-venue suggestions and a live price summary. Confetti on a sent request, a payment, an accepted booking and a review.
+
+**Bookings page**: Upcoming / Pending / Past tabs with counts, a progress timeline (Requested -> Accepted -> Paid -> Done), countdown ("in 1d 5h"), calendar-style date chip, Google Maps link for the venue, **Add to calendar (.ics)**, "Book again", cleaner pay-now banner and refund notes.
+
+**Chat**: conversation list with photos, last message and plan chip; thread header with the *next* plan as context; day separators, grouped gradient bubbles, "Seen" ticks, quick replies ("On my way", "Running late"...), dismissible safety tip, auto-growing composer, options menu (report / block).
+
+**Partner dashboard**: greeting + status chip, profile-strength ring with next steps, stats cards, **inbox with one-tap accept / decline**, copy-profile-link, sectioned profile editor with a sticky save bar.
+
+**Account**: profile header, membership card with days-left bar, quick links, tidy security / blocked / legal sections.
+
+**Smaller touches**: notifications sheet grouped by day with icons; sign-up with role cards, show/hide password, password-strength meter and live 18+ check; icon toasts; illustrated empty states; rating breakdown and "More companions in <city>" on profiles; saved page header; new footer.
+
+## Bug found and fixed
+**Navigation race**: logging in as an admin/partner starts loading the home page and then redirects to the dashboard/admin; if the slower home render finished last it overwrote the page you were on. Each navigation now renders into its own fresh container, so a stale render can never replace the current page.
+
+## Backend (small)
+Chat and booking APIs now return the partner's photo and a booking context (next upcoming plan) - 1 new test (30 total).
+
+## Testing
+30 backend tests; 70 scripted UI checks (new: wizard, tabs/stepper, chat quick replies, notifications, account, profile extras, sign-up polish); real Chrome screenshots at 390x844 and 1440x900 in `docs/screenshots/`.
+
+---
+
 # Gimble v5 - rebrand
 
 * **New name: Gimble** (was PairUp) everywhere: UI copy, emails, legal pages, API title, Razorpay checkout name, config, database file, Docker names, localStorage keys, demo accounts (`demo@gimble.local`, `aanya@gimble.local`, `admin@gimble.local`).

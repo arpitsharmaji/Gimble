@@ -286,3 +286,19 @@ def test_demo_partners_have_illustrated_portraits(client):
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
     with __import__("PIL.Image", fromlist=["Image"]).open(io.BytesIO(r.content)) as im:
         assert im.size == (800, 1000)
+
+
+def test_chat_and_booking_cards_carry_photo_and_context(client, customer, partner):
+    member(client, customer)
+    b = book(client, customer, 260)
+    accept(client, partner, b["id"])
+    mine = {x["id"]: x for x in client.get("/api/bookings", headers=customer).json()}
+    assert mine[b["id"]]["partner_photo"].startswith("/uploads/")
+    convs = client.get("/api/conversations", headers=customer).json()
+    c = next(x for x in convs if x["user_id"] == partner_id(client))
+    assert c["photo_url"].startswith("/uploads/") and c["booking"]["status"] in ("accepted", "completed")
+    thread = client.get(f"/api/messages/{partner_id(client)}", headers=customer).json()
+    assert thread["other"]["photo_url"] and thread["other"]["booking"]["activity"]
+    # a partner viewing a customer gets no photo, but still gets context
+    t2 = client.get(f"/api/messages/{c['user_id'] and 2}", headers=partner)
+    assert t2.status_code == 200 and t2.json()["other"]["photo_url"] == ""

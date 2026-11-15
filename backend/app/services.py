@@ -87,11 +87,27 @@ def refund_percent_if_customer_cancels(b: Booking) -> int:
     return 100 if hours >= REFUND_FULL_HOURS else 50 if hours >= REFUND_HALF_HOURS else 0
 
 
+def first_photo(db: Session, user_id: int) -> str:
+    prof = db.query(PartnerProfile).filter_by(user_id=user_id).first()
+    photos = json.loads(prof.photos_json or "[]") if prof else []
+    return photos[0] if photos else ""
+
+
+def pair_booking(db: Session, a: int, b: int) -> dict | None:
+    """The most relevant booking between two users (chat context): the next upcoming plan, else the latest one."""
+    pair = or_(and_(Booking.customer_id == a, Booking.partner_id == b), and_(Booking.customer_id == b, Booking.partner_id == a))
+    q = (db.query(Booking).filter(pair, Booking.status == "accepted", Booking.scheduled_at >= utcnow() - timedelta(hours=8))
+         .order_by(Booking.scheduled_at.asc()).first()
+         or db.query(Booking).filter(pair, Booking.status.in_(("accepted", "completed"))).order_by(Booking.scheduled_at.desc()).first())
+    return {"id": q.id, "activity": q.activity, "scheduled_at": q.scheduled_at.isoformat() + "Z", "status": q.status,
+            "location": q.location} if q else None
+
+
 def booking_json(b: Booking, db: Session) -> dict:
     c, p = db.get(User, b.customer_id), db.get(User, b.partner_id)
     fee = b.platform_fee or round(b.price * settings.PLATFORM_FEE_PERCENT / 100)
     return {"id": b.id, "customer_id": b.customer_id, "customer_name": c.name if c else "",
-            "partner_id": b.partner_id, "partner_name": p.name if p else "",
+            "partner_id": b.partner_id, "partner_name": p.name if p else "", "partner_photo": first_photo(db, b.partner_id),
             "activity": b.activity, "scheduled_at": b.scheduled_at.isoformat() + "Z",
             "duration_minutes": b.duration_minutes, "location": b.location, "price": b.price,
             "note": b.note, "status": b.status, "status_reason": b.status_reason,

@@ -75,8 +75,10 @@ export function toast(msg, type = 'info') {
   const box = $('#toasts');
   const el = document.createElement('div');
   el.className = 'toast ' + type; el.setAttribute('role', type === 'error' ? 'alert' : 'status');
-  el.textContent = msg; box.append(el);
-  setTimeout(() => el.remove(), type === 'error' ? 5500 : 3200);
+  const ico = document.createElement('span'); ico.className = 't-ico'; ico.textContent = type === 'ok' ? '✓' : type === 'error' ? '!' : 'i';
+  const txt = document.createElement('span'); txt.textContent = msg;
+  el.append(ico, txt); box.append(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 250); }, type === 'error' ? 5200 : 3000);
 }
 
 // ---------- modal ----------
@@ -186,4 +188,29 @@ export async function openRazorpay(co, onSuccess) {
     handler: async resp => { try { await onSuccess(resp); } catch (e) { toast(e.message + ' If you were charged, this will be confirmed automatically within a few minutes.', 'error'); } } });
   rzp.on('payment.failed', () => toast('Payment failed. You have not been charged. Please try again.', 'error'));
   rzp.open();
+}
+
+// ---------- shared UI building blocks ----------
+export function avatar(name, photoUrl, cls = '') {
+  return photoUrl ? html`<img class="av-img ${cls}" src="${photoUrl}" alt="" loading="lazy">` : html`<span class="av-ph ${cls}" style="--h:${hue(name)}">${initials(name)}</span>`;
+}
+export const emptyState = ({ icon = '✨', title, text = '', cta = '' }) => html`<div class="empty4"><div class="e-art">${icon}</div><h3>${title}</h3><p class="muted">${text}</p>${cta}</div>`;
+
+/** "2d 4h", "3h 20m", "25m" until an ISO time (empty string if in the past). */
+export function timeUntil(iso) {
+  const ms = new Date(iso) - Date.now(); if (ms <= 0) return '';
+  const m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m % 60}m` : `${m}m`;
+}
+export const mapsUrl = q => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q);
+
+/** Download an .ics calendar file for a booking (works in Google/Apple/Outlook calendars). */
+export function downloadICS(b, withName) {
+  const z = d => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const start = new Date(b.scheduled_at), end = new Date(start.getTime() + b.duration_minutes * 60000);
+  const esc = s => String(s).replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gimble//EN', 'BEGIN:VEVENT', `UID:gimble-${b.id}@gimble`, `DTSTAMP:${z(Date.now())}`, `DTSTART:${z(start)}`, `DTEND:${z(end)}`,
+    `SUMMARY:${esc(b.activity + ' with ' + withName)}`, `LOCATION:${esc(b.location)}`, `DESCRIPTION:${esc('Booked on Gimble. Meet in a public place and keep payments on Gimble.')}`, 'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', 'DESCRIPTION:Your plan starts in 1 hour', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = `gimble-plan-${b.id}.ics`;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

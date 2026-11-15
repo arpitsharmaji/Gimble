@@ -2,17 +2,20 @@ import { html, raw, api, state, setAuth, clearAuth, refreshMe, openModal, closeM
 
 const adultCutoff = () => { const d = new Date(); d.setFullYear(d.getFullYear() - 18); return d.toISOString().slice(0, 10); };
 
+const pwField = (id, name, ac, ph = '', extra = '') => html`<div class="pw"><input class="field" id="${id}" name="${name}" type="password" autocomplete="${ac}" placeholder="${ph}" ${extra ? raw(extra) : ''} required><button type="button" class="pw-eye" data-action="pw-toggle" aria-label="Show password">👁</button></div>`;
+const logoHead = html`<img class="m-logo" src="/logo-sm.png" alt="Gimble" width="56" height="46">`;
+
 export function openAuth(mode = 'login', heading) {
   if (mode === 'register') return openRegister(heading);
   if (mode === 'forgot') return openForgot();
   openModal(html`
-    <span class="badge">18+ MEMBERS ONLY</span>
-    <h2>${heading || 'Welcome back'}</h2>
+    <div class="m-top">${logoHead}<span class="badge">18+ MEMBERS ONLY</span></div>
+    <h2>${heading || 'Welcome back'}</h2><p class="muted nom">Log in to continue to Gimble.</p>
     <form data-submit="login" class="stack">
       <label class="lbl" for="l-email">Email</label>
       <input class="field" id="l-email" name="email" type="email" autocomplete="email" required>
       <label class="lbl" for="l-pw">Password</label>
-      <input class="field" id="l-pw" name="password" type="password" autocomplete="current-password" required>
+      ${pwField('l-pw', 'password', 'current-password')}
       <button class="btn primary block" type="submit">Log in</button>
     </form>
     <div class="row between small"><button class="link" data-action="auth-forgot">Forgot password?</button><button class="link" data-action="auth-register">Create an account</button></div>
@@ -21,18 +24,18 @@ export function openAuth(mode = 'login', heading) {
 
 function openRegister(heading) {
   openModal(html`
-    <span class="badge">18+ MEMBERS ONLY</span>
+    <div class="m-top">${logoHead}<span class="badge">18+ MEMBERS ONLY</span></div>
     <h2>${heading || 'Create your account'}</h2>
     <form data-submit="register" class="stack">
-      <div class="seg" role="radiogroup" aria-label="Account type">
-        <label><input type="radio" name="role" value="customer" checked><span>I want to book</span></label>
-        <label><input type="radio" name="role" value="partner"><span>I want to be a partner</span></label>
+      <div class="role-cards" role="radiogroup" aria-label="Account type">
+        <label><input type="radio" name="role" value="customer" checked><span><b>🔍 Book companions</b><small>Browse &amp; plan meet-ups</small></span></label>
+        <label><input type="radio" name="role" value="partner"><span><b>🌟 Become a partner</b><small>Earn on your schedule</small></span></label>
       </div>
       <label class="lbl" for="r-name">Full name</label><input class="field" id="r-name" name="name" required minlength="2" maxlength="80" autocomplete="name">
       <label class="lbl" for="r-email">Email</label><input class="field" id="r-email" name="email" type="email" required autocomplete="email">
-      <label class="lbl" for="r-pw">Password</label><input class="field" id="r-pw" name="password" type="password" required minlength="8" autocomplete="new-password" placeholder="8+ characters, letters and numbers">
+      <label class="lbl" for="r-pw">Password</label>${pwField('r-pw', 'password', 'new-password', '8+ characters, letters and numbers', 'minlength="8"')}<div class="meter"><i id="r-meter"></i></div><small class="muted" id="r-pw-hint">Use 8+ characters with letters and numbers.</small>
       <div class="grid2">
-        <div><label class="lbl" for="r-dob">Date of birth</label><input class="field" id="r-dob" name="dob" type="date" required max="${adultCutoff()}"></div>
+        <div><label class="lbl" for="r-dob">Date of birth</label><input class="field" id="r-dob" name="dob" type="date" required max="${adultCutoff()}"><small class="muted" id="r-dob-hint">You must be 18 or older.</small></div>
         <div><label class="lbl" for="r-gender">Gender (optional)</label><select class="field" id="r-gender" name="gender"><option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="non-binary">Non-binary</option><option value="other">Other</option></select></div>
       </div>
       <label class="lbl" for="r-city">City</label><input class="field" id="r-city" name="city" required minlength="2" placeholder="e.g. Gurugram" autocomplete="address-level2">
@@ -108,3 +111,17 @@ submits.reset = async f => {
   toast('Password updated. Please log in.', 'ok');
   location.hash = '#/'; openAuth('login');
 };
+
+actions['pw-toggle'] = el => { const i = el.parentElement.querySelector('input'); const show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.textContent = show ? '🙈' : '👁'; el.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); };
+document.addEventListener('input', e => {
+  if (e.target.id === 'r-pw') {
+    const v = e.target.value; let s = 0; if (v.length >= 8) s++; if (v.length >= 12) s++; if (/[A-Za-z]/.test(v) && /\d/.test(v)) s++; if (/[^A-Za-z0-9]/.test(v)) s++;
+    const m = $('#r-meter'), h = $('#r-pw-hint'); m.style.width = (v ? Math.max(12, s * 25) : 0) + '%'; m.dataset.s = String(s);
+    h.textContent = !v ? 'Use 8+ characters with letters and numbers.' : s <= 1 ? 'Weak - add length, letters and numbers' : s === 2 ? 'Okay - a bit longer is better' : s === 3 ? 'Good' : 'Strong 💪';
+  }
+  if (e.target.id === 'r-dob') {
+    const d = new Date(e.target.value), h = $('#r-dob-hint'); if (isNaN(d)) return;
+    const n = new Date(); let age = n.getFullYear() - d.getFullYear(); if (n < new Date(n.getFullYear(), d.getMonth(), d.getDate())) age--;
+    h.textContent = age >= 18 ? `You're ${age} ✓` : 'You must be 18 or older to join.'; h.style.color = age >= 18 ? '' : '#ff8a8a';
+  }
+});

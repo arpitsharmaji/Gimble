@@ -1,6 +1,6 @@
-import { html, raw, api, state, $, $$, openModal, closeModal, toast, actions, submits, formObj, inr, fmtDT, fmtD, ago, photo, isCustomer, askText, confirmBox, busy, clearAuth, refreshMe } from './core.js';
+import { html, raw, avatar, emptyState, api, state, $, $$, openModal, closeModal, toast, actions, submits, formObj, inr, fmtDT, fmtD, ago, photo, isCustomer, askText, confirmBox, busy, clearAuth, refreshMe } from './core.js';
 import { openAuth } from './auth.js';
-import { openMembership, startBooking } from './discover.js';
+import { openMembership, startBooking, card } from './discover.js';
 import { openRazorpay } from './core.js';
 import { reportModal, safetyModal, blockUser, CATEGORIES } from './safety.js';
 
@@ -15,128 +15,10 @@ export async function savedPage(root) {
   root.innerHTML = '<div class="page"><h1>Saved</h1><div class="skeleton"></div></div>';
   try {
     const rows = await api('/favorites');
-    root.innerHTML = html`<div class="page"><h1>Saved profiles</h1>${rows.length ? html`<div class="grid">${rows.map(p => html`<article class="card" tabindex="0" data-action="open-profile" data-id="${p.id}"><div class="card-photo">${photo(p)}</div><div class="card-body"><div class="between"><h3>${p.name}, ${p.age}</h3><span class="rate">★ ${p.review_count ? p.rating.toFixed(1) : 'New'}</span></div><p class="muted small">⌖ ${p.city} · from <b>${inr(p.min_rate)}</b></p></div></article>`)}</div>` : html`<div class="empty"><p>Nothing saved yet.</p><p class="muted">Tap ♡ on a profile to keep it here.</p><a class="btn primary" href="#/browse">Browse people</a></div>`}</div>`.s;
+    root.innerHTML = html`<div class="page"><div class="between"><div><h1>Saved</h1><p class="muted">${rows.length ? `${rows.length} ${rows.length === 1 ? 'profile' : 'profiles'} you liked` : ''}</p></div>${rows.length ? html`<a class="btn ghost sm" href="#/browse">Find more</a>` : ''}</div>
+      ${rows.length ? html`<div class="grid">${rows.map(card)}</div>` : emptyState({ icon: '💜', title: 'Nothing saved yet', text: 'Swipe right or tap ♡ on a profile to keep it here for later.', cta: html`<a class="btn primary" href="#/browse">Start swiping</a>` })}</div>`.s;
   } catch (e) { root.innerHTML = html`<div class="page"><p class="err">${e.message}</p></div>`.s; }
 }
-
-// ====================== BOOKINGS ======================
-export async function bookingsPage(root) {
-  if (!state.me) return needLogin(root);
-  root.innerHTML = '<div class="page"><h1>Bookings</h1><div class="skeleton"></div></div>';
-  let rows;
-  try { rows = await api('/bookings'); } catch (e) { root.innerHTML = html`<div class="page"><p class="err">${e.message}</p></div>`.s; return; }
-  const isP = state.me.role === 'partner';
-  const now = Date.now();
-  const groups = [
-    [isP ? 'Needs your response' : 'Awaiting partner', b => b.status === 'requested'],
-    ['Upcoming', b => b.status === 'accepted'],
-    ['Past', b => ['completed', 'cancelled', 'rejected', 'expired'].includes(b.status)],
-  ];
-  root.innerHTML = html`<div class="page"><h1>Bookings</h1>
-    ${!rows.length ? html`<div class="empty"><p>No bookings yet.</p>${isP ? html`<p class="muted">Requests from customers will appear here.</p>` : html`<a class="btn primary" href="#/browse">Find someone to meet</a>`}</div>` : ''}
-    ${groups.map(([title, test]) => { const g = rows.filter(test); return g.length ? html`<h2>${title} <small class="muted">(${g.length})</small></h2><div class="list">${g.map(b => bookingCard(b, isP, now))}</div>` : ''; })}</div>`.s;
-  root._rows = rows;
-}
-function payLine(b, isP) {
-  if (b.payment_status === 'refunded') return html`<p class="small ok">↩ Fully refunded (${inr(b.refund_amount)})</p>`;
-  if (b.payment_status === 'partially_refunded') return html`<p class="small warn">↩ Partly refunded (${inr(b.refund_amount)}) under the cancellation policy</p>`;
-  if (b.payment_status === 'refund_pending') return html`<p class="small warn">↩ Refund of ${inr(b.refund_amount)} is being processed</p>`;
-  if (b.status === 'accepted' && b.payments_on) {
-    if (b.payment_status === 'paid') return html`<p class="small ok">✓ Paid ${inr(b.paid_amount)} · held safely by Gimble until your plan is done${isP ? html` · you'll earn <b>${inr(b.partner_earning)}</b>` : ''}</p>`;
-    return isP ? html`<p class="small warn">⏳ Waiting for the customer to pay (they must pay by ${fmtDT(b.pay_deadline)})</p>`
-      : html`<div class="paybox"><span>Pay <b>${inr(b.price)}</b> by ${fmtDT(b.pay_deadline)} to confirm this plan.</span><button class="btn primary sm" data-action="pay-booking" data-id="${b.id}">Pay ${inr(b.price)}</button></div>`;
-  }
-  if (b.status === 'completed' && b.payment_status === 'paid') return html`<p class="small ok">✓ Paid ${inr(b.paid_amount)}</p>`;
-  return '';
-}
-function bookingCard(b, isP, now) {
-  const other = isP ? b.customer_name : b.partner_name, otherId = isP ? b.customer_id : b.partner_id;
-  const started = new Date(b.scheduled_at) <= now;
-  const soon = b.status === 'accepted' && now > new Date(b.scheduled_at) - 2 * 3600e3 && now < new Date(b.scheduled_at).getTime() + (b.duration_minutes + 360) * 60e3;
-  return html`<div class="item"><div class="between"><div><b>${b.activity}</b> <span class="muted">with ${other}</span></div>${pill(b.status)}</div>
-    <p class="muted small">📅 ${fmtDT(b.scheduled_at)} · ${b.duration_minutes / 60}h · ${inr(b.price)}</p>
-    <p class="muted small">📍 ${b.location}</p>${b.note ? html`<p class="small">“${b.note}”</p>` : ''}${b.status_reason ? html`<p class="muted small">Reason: ${b.status_reason}</p>` : ''}
-    ${payLine(b, isP)}
-    <div class="row wrap">
-    ${isP && b.status === 'requested' ? html`<button class="btn primary sm" data-action="bk" data-id="${b.id}" data-s="accepted">Accept</button><button class="btn ghost sm" data-action="bk" data-id="${b.id}" data-s="rejected">Decline</button>` : ''}
-    ${!isP && b.status === 'requested' ? html`<button class="btn ghost sm" data-action="bk" data-id="${b.id}" data-s="cancelled">Cancel request</button>` : ''}
-    ${b.status === 'accepted' ? html`<a class="btn ghost sm" href="#/messages/${otherId}">💬 Message</a>${!started ? html`<span class="muted small">Can be completed once it starts</span>` : (b.payments_on && b.payment_status !== 'paid') ? '' : html`<button class="btn primary sm" data-action="bk" data-id="${b.id}" data-s="completed">Mark completed</button>`}<button class="btn ghost sm" data-action="bk" data-id="${b.id}" data-s="cancelled">Cancel</button>` : ''}
-    ${soon ? html`<button class="btn danger sm" data-action="bk-safety" data-id="${b.id}">🛡 Safety</button>` : ''}
-    ${!isP && b.status === 'completed' ? html`<button class="btn primary sm" data-action="bk-review" data-id="${b.id}">★ Leave a review</button>` : ''}
-    ${['completed', 'accepted'].includes(b.status) ? html`<button class="link small" data-action="bk-report" data-id="${b.id}">Report</button>` : ''}
-    </div></div>`;
-}
-const findBooking = el => $('#view')._rows.find(b => b.id === Number(el.dataset.id));
-actions['pay-booking'] = el => busy(el, async () => {
-  const b = findBooking(el);
-  const co = await api(`/bookings/${b.id}/pay`, { method: 'POST' });
-  if (co.mode === 'demo') { await api(`/bookings/${b.id}/demo-pay`, { method: 'POST' }); toast('Demo payment recorded (no money collected).', 'ok'); return bookingsPage($('#view')); }
-  await openRazorpay(co, async resp => { await api('/payments/verify', { method: 'POST', body: resp }); toast('Payment confirmed - your plan is booked!', 'ok'); bookingsPage($('#view')); });
-});
-actions.bk = async el => {
-  const b = findBooking(el), s = el.dataset.s; let reason = '';
-  if (s === 'cancelled' && b.status === 'accepted') { const refundNote = b.payment_status === 'paid' ? (state.me.id === b.customer_id ? ` If you cancel now you get ${b.refund_percent_now}% back.` : ' The customer will be fully refunded.') : ''; reason = await askText({ title: 'Cancel this booking?', label: 'Reason (shared with the other person).' + refundNote, required: true, confirm: 'Cancel booking', danger: true }); if (reason === null) return; }
-  else if (s === 'rejected') { reason = await askText({ title: 'Decline request', label: 'Optional note', confirm: 'Decline' }); if (reason === null) return; }
-  else if (s === 'cancelled') { if (!await confirmBox({ title: 'Cancel request?', text: 'The partner will be notified.', confirm: 'Cancel request', danger: true })) return; }
-  await busy(el, async () => { await api(`/bookings/${b.id}`, { method: 'PATCH', body: { status: s, reason } }); toast('Booking updated.', 'ok'); bookingsPage($('#view')); });
-};
-actions['bk-safety'] = el => safetyModal(findBooking(el));
-actions['bk-report'] = el => { const b = findBooking(el); const isP = state.me.role === 'partner'; reportModal(isP ? b.customer_id : b.partner_id, isP ? b.customer_name : b.partner_name, b.id); };
-actions['bk-review'] = el => {
-  const b = findBooking(el);
-  openModal(html`<h2>Rate your plan with ${b.partner_name}</h2><form data-submit="review" class="stack"><input type="hidden" name="id" value="${b.id}">
-    <div class="starpick" role="radiogroup" aria-label="Rating">${[5, 4, 3, 2, 1].map(n => html`<input type="radio" id="st${n}" name="rating" value="${n}" ${n === 5 ? 'checked' : ''}><label for="st${n}" title="${n} stars">★</label>`)}</div>
-    <textarea class="field" name="comment" rows="3" maxlength="1000" placeholder="How was it? (optional)"></textarea><button class="btn primary block" type="submit">Submit verified review</button></form>`, { label: 'Review' });
-};
-submits.review = async f => { const b = formObj(f); await api(`/bookings/${b.id}/reviews`, { method: 'POST', body: { rating: Number(b.rating), comment: b.comment } }); closeModal(); toast('Thanks for your review!', 'ok'); bookingsPage($('#view')); };
-
-// ====================== MESSAGES ======================
-let chatState = { other: null, last: 0 };
-export async function messagesPage(root, otherId) {
-  if (!state.me) return needLogin(root);
-  let convs;
-  try { convs = await api('/conversations'); } catch (e) { root.innerHTML = html`<div class="page"><p class="err">${e.message}</p></div>`.s; return; }
-  const open = otherId ? Number(otherId) : null;
-  root.innerHTML = html`<div class="page chat-page"><div class="chat ${open ? 'has-thread' : ''}">
-    <aside class="convs"><h2>Messages</h2>${convs.length ? convs.map(c => html`<a class="conv ${open === c.user_id ? 'on' : ''}" href="#/messages/${c.user_id}"><span class="av">${c.name[0]}</span><span class="grow"><b>${c.name}</b><small class="muted">${c.last_message || 'Say hello 👋'}</small></span>${c.unread ? html`<span class="dot">${c.unread}</span>` : ''}</a>`) : html`<p class="muted small">Chat opens once a booking is accepted. Nothing here yet.</p>`}</aside>
-    <section class="thread" id="thread">${open ? '' : html`<div class="empty"><p class="muted">Select a conversation</p></div>`}</section></div></div>`.s;
-  if (open) await openThread(open);
-}
-async function openThread(id) {
-  const box = $('#thread'); chatState = { other: id, last: 0 };
-  try {
-    const r = await api(`/messages/${id}`);
-    box.innerHTML = html`<header class="thread-head"><a class="back mobile-only" href="#/messages">←</a><b>${r.other.name}</b><span class="grow"></span><button class="link small" data-action="chat-report" data-id="${id}" data-name="${r.other.name}">Report</button><button class="link small" data-action="chat-block" data-id="${id}" data-name="${r.other.name}">Block</button></header>
-      <p class="notice small">🛡 Never send money, OTPs or card details in chat. Messages containing payment requests or sexual content are blocked.</p>
-      <div class="msgs" id="msgs" aria-live="polite"></div>
-      <form class="composer" data-submit="send-msg"><input type="hidden" name="to" value="${id}"><textarea name="body" rows="1" maxlength="2000" placeholder="Write a message" required aria-label="Message"></textarea><button class="btn primary" type="submit">Send</button></form>`.s;
-    appendMsgs(r.messages);
-    const ta = $('.composer textarea'); ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('.composer').requestSubmit(); } });
-    stopTimers(); timers.push(setInterval(poll, 5000));
-  } catch (e) { box.innerHTML = html`<div class="empty"><p class="err">${e.message}</p></div>`.s; }
-}
-function appendMsgs(list) {
-  const m = $('#msgs'); if (!m) return;
-  const stick = m.scrollTop + m.clientHeight >= m.scrollHeight - 60 || chatState.last === 0;
-  for (const x of list) {
-    if (x.id <= chatState.last) continue; chatState.last = x.id;
-    const d = document.createElement('div'); d.className = 'msg ' + (x.sender_id === state.me.id ? 'me' : 'them');
-    d.innerHTML = html`<p>${x.body}</p><small>${new Date(x.created_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}${x.sender_id === state.me.id && x.read ? ' · Seen' : ''}</small>`.s;
-    m.append(d);
-  }
-  if (stick) m.scrollTop = m.scrollHeight;
-}
-async function poll() {
-  if (document.hidden || !chatState.other || !$('#msgs')) return;
-  try { const r = await api(`/messages/${chatState.other}?after=${chatState.last}`); appendMsgs(r.messages); } catch { /* transient */ }
-}
-submits['send-msg'] = async f => {
-  const b = formObj(f); const ta = $('textarea', f);
-  const m = await api('/messages', { method: 'POST', body: { receiver_id: Number(b.to), body: b.body } });
-  ta.value = ''; appendMsgs([m]);
-};
-actions['chat-report'] = el => reportModal(Number(el.dataset.id), el.dataset.name);
-actions['chat-block'] = async el => { if (await blockUser(Number(el.dataset.id), el.dataset.name)) location.hash = '#/messages'; };
 
 // ====================== NOTIFICATIONS ======================
 export async function pollNotifications() {
@@ -147,53 +29,75 @@ export function renderBadges() {
   const b = $('#bell-badge'); if (b) { b.hidden = !state.unread.n; b.textContent = state.unread.n > 9 ? '9+' : state.unread.n; }
   const m = $('#msg-badge'); if (m) { m.hidden = !state.unread.msgs; m.textContent = state.unread.msgs > 9 ? '9+' : state.unread.msgs; }
 }
+const N_ICON = { booking: '📅', payment: '💳', payout: '💰', kyc: '🪪', review: '⭐', report: '🛡️', profile: '✅', support: '💬', membership: '✨' };
 actions.bell = async () => {
   if (!state.me) return openAuth('login');
   await pollNotifications();
-  const items = state._notes || [];
-  openModal(html`<h2>Notifications</h2>${items.length ? html`<div class="list">${items.map(n => html`<a class="item ${n.read ? '' : 'unread'}" href="${n.link || '#/'}" data-action="close-modal"><p>${n.text}</p><small class="muted">${ago(n.created_at)}</small></a>`)}</div>` : html`<p class="muted">You're all caught up.</p>`}`, { label: 'Notifications' });
+  const items = state._notes || [], today = new Date().toDateString();
+  const groups = [['Today', items.filter(n => new Date(n.created_at).toDateString() === today)], ['Earlier', items.filter(n => new Date(n.created_at).toDateString() !== today)]].filter(g => g[1].length);
+  openModal(html`<h2>Notifications</h2>${items.length ? groups.map(([t, list]) => html`<p class="grp">${t}</p><div class="list">${list.map(n => html`<a class="notif ${n.read ? '' : 'unread'}" href="${n.link || '#/'}" data-action="close-modal"><span class="n-ico">${N_ICON[n.kind] || '🔔'}</span><span class="grow"><span>${n.text}</span><small class="muted">${ago(n.created_at)}</small></span>${n.read ? '' : html`<i class="n-dot"></i>`}</a>`)}</div>`)
+    : emptyState({ icon: '🔔', title: "You're all caught up", text: 'Booking updates, payments and messages will show up here.' })}`, { label: 'Notifications' });
   if (state.unread.n) { api('/notifications/read', { method: 'POST' }).then(() => { state.unread.n = 0; renderBadges(); }); }
 };
 
 // ====================== PARTNER DASHBOARD ======================
 let draft = null;
+const ring = pct => html`<svg class="ring" viewBox="0 0 44 44" aria-label="${pct}% complete"><circle cx="22" cy="22" r="18" class="rb"></circle><circle cx="22" cy="22" r="18" class="rf" style="stroke-dasharray:${(113 * pct / 100).toFixed(1)} 113"></circle><text x="22" y="26" text-anchor="middle">${pct}%</text></svg>`;
+function completeness(p) {
+  const checks = [['Add your first photo', p.photos.length >= 1, 15], ['Add 3 or more photos', p.photos.length >= 3, 10], ['Write a catchy headline', p.headline.trim().length >= 5, 10],
+    ['Write a longer bio (120+ characters)', p.bio.trim().length >= 120, 20], ['Offer 3 or more activities', p.activities.length >= 3, 15], ['List the languages you speak', p.languages.length >= 1, 5],
+    ['Set your weekly hours', Object.keys(p.schedule || {}).length > 0, 10], ['Verify your ID for the ✓ badge', p.verified, 15]];
+  return { pct: checks.reduce((s, c) => s + (c[1] ? c[2] : 0), 0), todo: checks.filter(c => !c[1]).slice(0, 3).map(c => c[0]) };
+}
 export async function dashboardPage(root) {
   if (!state.me) return needLogin(root);
-  if (state.me.role !== 'partner') { root.innerHTML = html`<div class="page narrow center"><h1>Partner dashboard</h1><p class="muted">This area is for partner accounts. Sign up as a partner to list your profile.</p></div>`.s; return; }
+  if (state.me.role !== 'partner') { root.innerHTML = html`<div class="page narrow">${emptyState({ icon: '🌟', title: 'Partner dashboard', text: 'This area is for partner accounts. Sign up as a partner to list your profile and start earning.', cta: html`<a class="btn primary" href="#/become-a-partner">Become a partner</a>` })}</div>`.s; return; }
   root.innerHTML = '<div class="page"><div class="skeleton tall"></div></div>';
   try {
     const [p, bookings] = await Promise.all([api('/partner/profile'), api('/bookings')]);
     const myReviews = await api(`/partners/${state.me.id}/reviews`).catch(() => []);
     draft = { ...p, photos: [...p.photos], activities: [...p.activities], rates: { ...p.rates } };
-    const done = bookings.filter(b => b.status === 'completed'), pending = bookings.filter(b => b.status === 'requested');
-    const banner = {
-      draft: ['warn', 'Your profile isn\'t live yet. Complete it and submit for review.'],
-      pending: ['info', 'Your profile is under review. We\'ll notify you when it\'s approved (usually within 24 hours).'],
-      approved: ['ok', 'Your profile is live and visible to customers.'],
-      rejected: ['warn', 'Your profile needs changes: ' + (p.reject_reason || 'please review and resubmit.')],
-    }[p.status];
-    root.innerHTML = html`<div class="page"><h1>Partner dashboard</h1>
-      <div class="notice ${banner[0]}">${banner[1]}${p.status === 'approved' ? html` <a href="#/p/${p.id}">View public profile</a>` : ''}</div>
-      <div class="stats"><div><b>${pending.length}</b><span>Pending requests</span></div><div><b>${done.length}</b><span>Completed</span></div><div><b>${p.review_count ? p.rating.toFixed(1) : '-'}</b><span>Rating</span></div><div><b>${inr(done.reduce((s, b) => s + b.price, 0))}</b><span>Booked value*</span></div></div>
-      <p class="muted small">*Sum of completed booking prices. Gimble doesn't process booking payments or payouts in this build.</p>
-      <div class="tiles"><a class="tile" href="#/earnings"><b>💰 Earnings &amp; payouts</b><span>Wallet, UPI payouts</span></a><a class="tile" href="#/verify-id"><b>${p.verified ? '✓ ID verified' : '🪪 Get ID verified'}</b><span>${p.verified ? 'Badge active' : 'Needed for payouts'}</span></a><a class="tile" href="#/schedule"><b>🗓 Weekly hours</b><span>${Object.keys(p.schedule || {}).length ? Object.keys(p.schedule).length + ' days set' : 'Any time'}</span></a></div>
-      <label class="switch"><input type="checkbox" id="avail" data-action="toggle-avail" ${p.available ? 'checked' : ''}><span></span> Accepting booking requests</label>
-      ${pending.length ? html`<h2>Pending requests</h2><div class="list">${pending.map(b => html`<div class="item"><b>${b.activity}</b> <span class="muted">from ${b.customer_name}</span><p class="muted small">${fmtDT(b.scheduled_at)} · ${inr(b.price)} · 📍 ${b.location}</p><a class="btn primary sm" href="#/bookings">Respond</a></div>`)}</div>` : ''}
-      ${myReviews.length ? html`<h2>Recent reviews</h2><div class="list">${myReviews.slice(0, 5).map(r => html`<div class="item"><div class="between"><b>${r.reviewer}</b><span class="stars">${'★'.repeat(r.rating)}</span></div><p>${r.comment || ''}</p>${r.partner_reply ? html`<p class="muted small">Your reply: ${r.partner_reply}</p>` : html`<button class="btn ghost sm" data-action="reply-review" data-id="${r.booking_id}">Reply</button>`}</div>`)}</div>` : ''}
-      <h2>Your profile</h2><form id="pform" data-submit="save-profile" class="stack">
-      <label class="lbl">Photos <small class="muted">(up to 6 · first is your main photo · clear face photos only, no explicit images)</small></label><div class="photos" id="photos"></div>
-      <label class="lbl" for="p-head">Headline</label><input class="field" id="p-head" name="headline" maxlength="120" value="${p.headline}" placeholder="e.g. Cafe hopper & movie buff">
-      <label class="lbl" for="p-bio">About you <small class="muted" id="bio-count"></small></label><textarea class="field" id="p-bio" name="bio" rows="5" maxlength="1500" placeholder="Tell customers about yourself (min 30 characters). No phone numbers, links or payment details.">${p.bio}</textarea>
-      <label class="lbl" for="p-lang">Languages (comma separated)</label><input class="field" id="p-lang" name="languages" value="${p.languages.join(', ')}" placeholder="English, Hindi">
-      <label class="lbl">Activities &amp; rates (₹ per session)</label><div id="acts"></div>
-      <div class="chips" id="sugg"></div>
-      <div class="row"><input class="field" id="new-act" placeholder="Add your own activity" maxlength="60"><button class="btn ghost" type="button" data-action="add-act">Add</button></div>
-      <div class="notice">Only non-sexual, public-place activities are allowed. Profiles containing sexual or adult-service wording are rejected automatically.</div>
-      <div class="row wrap"><button class="btn ghost" type="submit" data-mode="save">Save changes</button><button class="btn primary" type="button" data-action="submit-profile">Save &amp; submit for review</button></div></form></div>`.s;
+    const done = bookings.filter(b => b.status === 'completed'), pending = bookings.filter(b => b.status === 'requested'), upcoming = bookings.filter(b => b.status === 'accepted');
+    const comp = completeness(p), first = state.me.name.split(' ')[0];
+    const status = { draft: ['warn', 'Draft', 'Your profile isn\'t live yet. Complete it and submit for review.'], pending: ['info', 'Under review', 'We\'re reviewing your profile - usually within 24 hours.'],
+      approved: ['ok', 'Live', 'Your profile is live and visible to customers.'], rejected: ['warn', 'Needs changes', p.reject_reason || 'Please review and resubmit.'] }[p.status];
+    root.innerHTML = html`<div class="page wide-ish">
+      <section class="dash-hero"><div class="dh-id">${avatar(state.me.name, p.photos[0], 'lg')}<div><p class="muted small">Welcome back</p><h1>Hi, ${first} 👋</h1><span class="status-chip ${status[0]}">● ${status[1]}</span></div></div>
+        <div class="dh-actions">${p.status === 'approved' ? html`<a class="btn ghost sm" href="#/p/${p.id}">View public profile</a><button class="btn ghost sm" data-action="copy-link" data-id="${p.id}">🔗 Copy link</button>` : ''}
+        <label class="switch"><input type="checkbox" id="avail" data-action="toggle-avail" ${p.available ? 'checked' : ''}><span></span> Accepting requests</label></div></section>
+      <div class="notice ${status[0]}">${status[2]}</div>
+      <div class="dash-grid">
+        <div class="dcol">
+          <div class="stats4"><div><i>📬</i><b>${pending.length}</b><span>New requests</span></div><div><i>🗓️</i><b>${upcoming.length}</b><span>Upcoming</span></div><div><i>✅</i><b>${done.length}</b><span>Completed</span></div><div><i>⭐</i><b>${p.review_count ? p.rating.toFixed(1) : '–'}</b><span>Rating</span></div></div>
+          <h2 class="h2s">Inbox ${pending.length ? html`<span class="count-dot">${pending.length}</span>` : ''}</h2>
+          ${pending.length ? html`<div class="list">${pending.map(b => html`<div class="req"><div class="req-top"><b>${b.activity}</b><span class="muted small">from ${b.customer_name}</span><span class="grow"></span><b>${inr(b.price)}</b></div><p class="muted small">🗓 ${fmtDT(b.scheduled_at)} · ${b.duration_minutes / 60}h · 📍 ${b.location}</p>${b.note ? html`<p class="small">“${b.note}”</p>` : ''}<div class="row"><button class="btn primary sm" data-action="dash-bk" data-id="${b.id}" data-s="accepted">Accept</button><button class="btn ghost sm" data-action="dash-bk" data-id="${b.id}" data-s="rejected">Decline</button></div></div>`)}</div>`
+            : html`<div class="mini-empty">📭 No new requests right now. ${p.status !== 'approved' ? 'Get approved to start receiving them.' : 'Keep your profile fresh to get more.'}</div>`}
+          ${myReviews.length ? html`<h2 class="h2s">Recent reviews</h2><div class="list">${myReviews.slice(0, 5).map(r => html`<div class="item"><div class="between"><b>${r.reviewer}</b><span class="stars">${'★'.repeat(r.rating)}</span></div><p>${r.comment || ''}</p>${r.partner_reply ? html`<p class="muted small">Your reply: ${r.partner_reply}</p>` : html`<button class="btn ghost sm" data-action="reply-review" data-id="${r.booking_id}">Reply</button>`}</div>`)}</div>` : ''}
+        </div>
+        <aside class="dcol">
+          <div class="comp-card">${ring(comp.pct)}<div><b>Profile strength</b><p class="muted small">${comp.pct >= 100 ? 'Perfect - you\'re all set! 🎉' : 'Complete profiles get more bookings.'}</p></div></div>
+          ${comp.todo.length ? html`<ul class="todo">${comp.todo.map(t => html`<li>${t}</li>`)}</ul>` : ''}
+          <div class="tiles tiles-col"><a class="tile" href="#/earnings"><b>💰 Earnings &amp; payouts</b><span>Wallet, UPI payouts</span></a><a class="tile" href="#/verify-id"><b>${p.verified ? '✓ ID verified' : '🪪 Get ID verified'}</b><span>${p.verified ? 'Badge is active' : 'Needed for payouts'}</span></a><a class="tile" href="#/schedule"><b>🗓 Weekly hours</b><span>${Object.keys(p.schedule || {}).length ? Object.keys(p.schedule).length + ' days set' : 'Any time'}</span></a><a class="tile" href="#/bookings"><b>📅 All bookings</b><span>Requests, upcoming, past</span></a></div>
+        </aside></div>
+      <h2 class="h2s">Edit your profile</h2>
+      <form id="pform" data-submit="save-profile" class="stack ed">
+        <div class="ed-card"><h3>Photos</h3><p class="muted small">Up to 6 · the first is your main photo · clear face photos only, no explicit images.</p><div class="photos" id="photos"></div></div>
+        <div class="ed-card"><h3>About you</h3><label class="lbl" for="p-head">Headline</label><input class="field" id="p-head" name="headline" maxlength="120" value="${p.headline}" placeholder="e.g. Cafe hopper & movie buff">
+          <label class="lbl" for="p-bio">Bio <small class="muted" id="bio-count"></small></label><textarea class="field" id="p-bio" name="bio" rows="5" maxlength="1500" placeholder="Tell customers about yourself (min 30 characters). No phone numbers, links or payment details.">${p.bio}</textarea>
+          <label class="lbl" for="p-lang">Languages (comma separated)</label><input class="field" id="p-lang" name="languages" value="${p.languages.join(', ')}" placeholder="English, Hindi"></div>
+        <div class="ed-card"><h3>Activities &amp; rates</h3><p class="muted small">Your price per session in ₹.</p><div id="acts"></div><div class="chips" id="sugg"></div><div class="row"><input class="field" id="new-act" placeholder="Add your own activity" maxlength="60"><button class="btn ghost" type="button" data-action="add-act">Add</button></div></div>
+        <div class="notice">Only non-sexual, public-place activities are allowed. Profiles with sexual or adult-service wording are rejected automatically.</div>
+        <div class="save-bar"><button class="btn ghost" type="submit" data-mode="save">Save changes</button><button class="btn primary" type="button" data-action="submit-profile">Save &amp; submit for review</button></div></form></div>`.s;
     drawPhotos(); drawActs(); bioCount();
     $('#p-bio').addEventListener('input', bioCount);
   } catch (e) { root.innerHTML = html`<div class="page"><p class="err">${e.message}</p></div>`.s; }
 }
+actions['dash-bk'] = async el => {
+  let reason = '';
+  if (el.dataset.s === 'rejected') { reason = await askText({ title: 'Decline request', label: 'Optional note for the customer', confirm: 'Decline' }); if (reason === null) return; }
+  await busy(el, async () => { await api(`/bookings/${el.dataset.id}`, { method: 'PATCH', body: { status: el.dataset.s, reason } }); toast(el.dataset.s === 'accepted' ? 'Accepted - the customer can now pay to confirm.' : 'Declined.', 'ok'); dashboardPage($('#view')); });
+};
+actions['copy-link'] = async el => { try { await navigator.clipboard.writeText(`${location.origin}/#/p/${el.dataset.id}`); toast('Profile link copied.', 'ok'); } catch { toast('Copy failed - long-press the link instead.', 'error'); } };
 const bioCount = () => { const t = $('#p-bio'), c = $('#bio-count'); if (t && c) c.textContent = `${t.value.trim().length}/1500`; };
 function drawPhotos() {
   const el = $('#photos'); if (!el) return;
@@ -236,18 +140,18 @@ export async function accountPage(root) {
   await refreshMe(); const me = state.me;
   let mem = null, blocks = [];
   try { if (me.role === 'customer') mem = await api('/membership/status'); blocks = await api('/blocks'); } catch { /* shown empty */ }
-  const devLink = sessionStorage.getItem('dev_verify_link');
-  root.innerHTML = html`<div class="page narrow"><h1>Account</h1>
-    <div class="item"><div class="between"><div><b>${me.name}</b><p class="muted small">${me.email} · ${me.city} · ${me.role}</p></div>${me.email_verified ? html`<span class="pill completed">email verified</span>` : html`<span class="pill requested">email not verified</span>`}</div>
-    ${me.email_verified ? '' : html`<button class="btn ghost sm" data-action="resend-verify">Resend verification email</button>${devLink ? html` <a class="small" href="${devLink}">dev: verify now</a>` : ''}`}</div>
-    ${me.role === 'customer' ? html`<h2>Membership</h2><div class="item">${mem && mem.active ? html`<p><b>${mem.plan}</b> plan active until ${fmtD(mem.expires_at)}</p><button class="btn ghost sm" data-action="open-membership">Extend</button>` : html`<p class="muted">No active membership. Required to send booking requests.</p><button class="btn primary sm" data-action="open-membership">Get membership</button>`}</div>` : ''}
-    ${me.role === 'customer' ? html`<p><a class="btn ghost" href="#/saved">♡ Saved profiles</a> <a class="btn ghost" href="#/support">Help &amp; support</a></p>` : ''}
-    ${me.role === 'partner' ? html`<p><a class="btn primary" href="#/dashboard">Open partner dashboard</a></p>` : ''}
-    ${me.role === 'admin' ? html`<p><a class="btn primary" href="#/admin">Open admin console</a></p>` : ''}
-    <h2>Change password</h2><form data-submit="chpw" class="stack"><input class="field" name="current_password" type="password" placeholder="Current password" autocomplete="current-password" required><input class="field" name="new_password" type="password" placeholder="New password (8+ chars, letters & numbers)" minlength="8" autocomplete="new-password" required><button class="btn ghost" type="submit">Update password</button></form>
-    <h2>Blocked users</h2>${blocks.length ? html`<div class="list">${blocks.map(b => html`<div class="item between"><span>${b.name}</span><button class="btn ghost sm" data-action="unblock" data-id="${b.user_id}">Unblock</button></div>`)}</div>` : html`<p class="muted small">You haven't blocked anyone.</p>`}
-    <h2>Session</h2><button class="btn ghost" data-action="logout">Log out</button>
-    <h2>Danger zone</h2><p class="muted small">Deleting your account deactivates it and removes your personal details. This can't be undone.</p><button class="btn danger" data-action="delete-account">Delete my account</button></div>`.s;
+  const devLink = sessionStorage.getItem('gimble_dev_verify_link') || sessionStorage.getItem('dev_verify_link');
+  const total = mem && mem.plan === 'annual' ? 365 : 30, left = mem && mem.active ? Math.max(0, Math.ceil((new Date(mem.expires_at) - Date.now()) / 864e5)) : 0;
+  root.innerHTML = html`<div class="page narrow-lg">
+    <section class="acc-hero">${avatar(me.name, '', 'xl')}<div class="grow"><h1>${me.name}</h1><p class="muted">${me.email}</p><div class="row wrap"><span class="pill ${me.role === 'admin' ? 'accepted' : 'requested'}">${me.role}</span><span class="pill ${me.email_verified ? 'completed' : 'requested'}">${me.email_verified ? '✓ email verified' : 'email not verified'}</span><span class="muted small">⌖ ${me.city}</span></div>
+      ${me.email_verified ? '' : html`<button class="btn ghost sm" data-action="resend-verify">Resend verification email</button>${devLink ? html` <a class="small" href="${devLink}">dev: verify now</a>` : ''}`}</div></section>
+    ${me.role === 'customer' ? (mem && mem.active ? html`<section class="mem-card"><div><span class="badge">GIMBLE MEMBER</span><h2>${mem.plan === 'annual' ? 'Annual' : 'Monthly'} plan</h2><p>Active until <b>${fmtD(mem.expires_at)}</b> · ${left} day${left === 1 ? '' : 's'} left</p><div class="bar"><i style="width:${Math.min(100, Math.round(left / total * 100))}%"></i></div></div><button class="btn ghost" data-action="open-membership">Extend</button></section>`
+      : html`<section class="mem-card off"><div><span class="badge">UNLOCK BOOKINGS</span><h2>Become a member</h2><p>Browsing is free. A membership lets you send booking requests.</p></div><button class="btn primary" data-action="open-membership">See plans</button></section>`) : ''}
+    <div class="qlinks">${me.role === 'customer' ? html`<a href="#/saved"><span>💜</span>Saved</a>` : ''}${me.role === 'partner' ? html`<a href="#/dashboard"><span>🌟</span>Dashboard</a><a href="#/earnings"><span>💰</span>Earnings</a>` : ''}${me.role === 'admin' ? html`<a href="#/admin"><span>🛠️</span>Admin</a>` : ''}<a href="#/bookings"><span>📅</span>Bookings</a><a href="#/support"><span>💬</span>Support</a><a href="#/safety"><span>🛡️</span>Safety</a></div>
+    <h2 class="h2s">Security</h2><details class="faq"><summary>Change password</summary><form data-submit="chpw" class="stack pad"><input class="field" name="current_password" type="password" placeholder="Current password" autocomplete="current-password" required><input class="field" name="new_password" type="password" placeholder="New password (8+ chars, letters & numbers)" minlength="8" autocomplete="new-password" required><button class="btn primary" type="submit">Update password</button></form></details>
+    <h2 class="h2s">Blocked users</h2>${blocks.length ? html`<div class="list">${blocks.map(b => html`<div class="item between"><span>${b.name}</span><button class="btn ghost sm" data-action="unblock" data-id="${b.user_id}">Unblock</button></div>`)}</div>` : html`<p class="muted small">You haven't blocked anyone.</p>`}
+    <h2 class="h2s">Legal</h2><p class="small"><a href="#/terms">Terms</a> · <a href="#/privacy">Privacy</a> · <a href="#/standards">Community Standards</a> · <a href="#/refunds">Refunds</a> · <a href="#/faq">FAQ</a></p>
+    <div class="row wrap acc-end"><button class="btn ghost" data-action="logout">Log out</button><button class="btn danger" data-action="delete-account">Delete my account</button></div></div>`.s;
 }
 actions['resend-verify'] = el => busy(el, async () => { const r = await api('/auth/resend-verification', { method: 'POST' }); if (r.dev_verify_link) sessionStorage.setItem('dev_verify_link', r.dev_verify_link); toast(r.message, 'ok'); accountPage($('#view')); });
 actions.unblock = async el => { await api(`/blocks/${el.dataset.id}`, { method: 'DELETE' }); toast('Unblocked.', 'ok'); accountPage($('#view')); };

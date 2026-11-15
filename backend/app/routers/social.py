@@ -6,7 +6,7 @@ from ..models import (User, PartnerProfile, Favorite, Message, Notification, Blo
 from ..moderation import check_text
 from ..schemas import MessageIn, ReportIn, SosIn
 from ..security import current_user, rate_limit
-from ..services import partner_json, can_chat, is_blocked, notify, audit, blocked_ids, cancel_booking
+from ..services import partner_json, can_chat, is_blocked, notify, audit, blocked_ids, cancel_booking, first_photo, pair_booking
 
 router = APIRouter(prefix="/api", tags=["social"])
 REPORT_CATEGORIES = {"harassment", "sexual_solicitation", "scam_or_payment", "fake_profile",
@@ -70,7 +70,8 @@ def conversations(u: User = Depends(current_user), db: Session = Depends(get_db)
                                              and_(Message.sender_id == oid, Message.receiver_id == u.id)))
                 .order_by(Message.id.desc()).first())
         unread = db.query(Message).filter_by(sender_id=oid, receiver_id=u.id, read_at=None).count()
-        out.append({"user_id": oid, "name": other.name, "last_message": last.body if last else "",
+        out.append({"user_id": oid, "name": other.name, "photo_url": first_photo(db, oid), "booking": pair_booking(db, u.id, oid),
+                    "last_message": last.body if last else "",
                     "last_at": last.created_at.isoformat() + "Z" if last else "", "unread": unread})
     out.sort(key=lambda c: c["last_at"], reverse=True)
     return out
@@ -88,7 +89,8 @@ def get_messages(other_id: int, after: int = 0, u: User = Depends(current_user),
         and_(Message.sender_id == other_id, Message.receiver_id == u.id)))
         .order_by(Message.id.asc()).limit(300).all())
     other = db.get(User, other_id)
-    return {"other": {"id": other.id, "name": other.name}, "messages": [_msg(m) for m in rows]}
+    return {"other": {"id": other.id, "name": other.name, "photo_url": first_photo(db, other_id), "booking": pair_booking(db, u.id, other_id)},
+            "messages": [_msg(m) for m in rows]}
 
 
 @router.post("/messages", dependencies=[Depends(rate_limit("message", 60, 60))])

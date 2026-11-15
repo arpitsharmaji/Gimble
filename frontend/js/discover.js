@@ -3,6 +3,7 @@ import { openAuth } from './auth.js';
 import { reportModal, blockUser } from './safety.js';
 import { mountDeck } from './deck.js';
 import { isMobile, burst, haptic, reveal } from './fx.js';
+import { bookingWizard } from './booking.js';
 
 const login = fn => requireLogin(fn, openAuth);
 const DEFAULT_F = { q: '', city: '', activity: '', max_price: '', min_rating: '', gender: '', sort: 'relevance', available: false };
@@ -159,6 +160,7 @@ actions['sheet-book'] = () => { const p = $('#modal-root')._p; closeModal(); if 
 
 // ====================== PROFILE PAGE ======================
 let selAct = '';
+const breakdown = rs => { const n = rs.length, c = [5, 4, 3, 2, 1].map(s => rs.filter(r => r.rating === s).length); return html`<div class="rbreak"><div class="rb-score"><b>${(rs.reduce((a, r) => a + r.rating, 0) / n).toFixed(1)}</b><span class="stars">${stars(rs.reduce((a, r) => a + r.rating, 0) / n)}</span><small class="muted">${n} ${n === 1 ? 'review' : 'reviews'}</small></div><div class="rb-bars">${[5, 4, 3, 2, 1].map((s, i) => html`<div><span>${s}★</span><i><u style="width:${Math.round(c[i] / n * 100)}%"></u></i><small>${c[i]}</small></div>`)}</div></div>`; };
 export async function profilePage(root, id) {
   cleanup();
   root.innerHTML = '<div class="page"><div class="skeleton tall"></div></div>';
@@ -183,10 +185,12 @@ export async function profilePage(root, id) {
       <p class="muted small">Per session. You pay <b>after the partner accepts</b>; Gimble holds the money until your plan is done. <a href="#/refunds">Cancellation &amp; refunds</a></p></div>
       <div class="notice">🛡 Meet in public places · never pay outside Gimble · no sexual services. <a href="#/safety">Safety tips</a></div>
       ${!own ? html`<div class="row small"><button class="link" data-action="report-user" data-id="${p.id}" data-name="${p.name}">Report</button><button class="link" data-action="block-user" data-id="${p.id}" data-name="${p.name}">Block</button></div>` : ''}
-      <h2>Reviews</h2>${reviews.length ? html`<div class="reviews">${reviews.map(r => html`<div class="review"><div class="between"><b>${r.reviewer}</b><span class="stars">${stars(r.rating)}</span></div><p>${r.comment || html`<span class="muted">No written comment.</span>`}</p><p class="muted small">${fmtD(r.created_at)} · verified booking</p>${r.partner_reply ? html`<div class="reply"><b>${p.name} replied:</b> ${r.partner_reply}</div>` : ''}</div>`)}</div>` : html`<p class="muted">No reviews yet. Only customers with a completed booking can review.</p>`}
+      <h2>Reviews</h2>${reviews.length ? html`${breakdown(reviews)}<div class="reviews">${reviews.map(r => html`<div class="review"><div class="between"><b>${r.reviewer}</b><span class="stars">${stars(r.rating)}</span></div><p>${r.comment || html`<span class="muted">No written comment.</span>`}</p><p class="muted small">${fmtD(r.created_at)} · verified booking</p>${r.partner_reply ? html`<div class="reply"><b>${p.name} replied:</b> ${r.partner_reply}</div>` : ''}</div>`)}</div>` : html`<p class="muted">No reviews yet. Only customers with a completed booking can review.</p>`}
+      <div id="similar"></div>
     </div></div>
     <div class="pf-bar"><div><small class="muted">from</small><b>${inr(p.min_rate)}</b></div><button class="btn primary big grow" data-action="book" data-id="${p.id}" ${own ? 'disabled' : ''}>${own ? 'This is your profile' : 'Request booking'}</button></div></div>`.s;
   root._partner = p;
+  api(`/partners?city=${encodeURIComponent(p.city)}&limit=8`).then(r => { const more = r.items.filter(x => x.id !== p.id).slice(0, 6), host = $('#similar'); if (host && more.length) { host.innerHTML = html`<h2>More companions in ${p.city}</h2><div class="hscroll">${more.map(card)}</div>`.s; } }).catch(() => {});
   const track = $('#pfTrack'), dots = $$('#pfDots i');
   if (track && dots.length) track.addEventListener('scroll', () => { const i = Math.round(track.scrollLeft / track.clientWidth); dots.forEach((d, k) => d.classList.toggle('on', k === i)); }, { passive: true });
 }
@@ -203,37 +207,10 @@ actions.book = el => { const p = $('#view')._partner; if (p) startBooking(p, sel
 export function startBooking(p, activity) {
   login(async () => {
     if (!isCustomer()) { toast('Only customer accounts can send booking requests.', 'error'); return; }
-    try { const m = await api('/membership/status'); if (!m.active) return openMembership(() => bookingForm(p, activity)); bookingForm(p, activity); }
+    try { const m = await api('/membership/status'); if (!m.active) return openMembership(() => bookingWizard(p, activity)); bookingWizard(p, activity); }
     catch (e) { toast(e.message, 'error'); }
   });
 }
-
-function bookingForm(p, activity) {
-  const min = new Date(Date.now() + 135 * 60000); min.setMinutes(Math.ceil(min.getMinutes() / 15) * 15, 0, 0);
-  const local = new Date(min.getTime() - min.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  const max = new Date(Date.now() + 89 * 86400000); const maxLocal = new Date(max.getTime() - max.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  openModal(html`<span class="badge">BOOKING REQUEST</span><h2>Plan with ${p.name}</h2>
-    <form data-submit="booking" class="stack"><input type="hidden" name="partner_id" value="${p.id}">
-    <label class="lbl" for="b-act">Activity</label>
-    <select class="field" id="b-act" name="activity">${Object.entries(p.rates).map(([a, v]) => html`<option value="${a}" ${a === activity ? 'selected' : ''}>${a} - ${inr(v)}</option>`)}</select>
-    <div class="grid2"><div><label class="lbl" for="b-when">Date &amp; time</label><input class="field" id="b-when" name="when" type="datetime-local" min="${local}" max="${maxLocal}" value="${local}" required></div>
-    <div><label class="lbl" for="b-dur">Duration</label><select class="field" id="b-dur" name="duration_minutes">${[1, 2, 3, 4, 6, 8].map(h => html`<option value="${h * 60}">${h} hour${h > 1 ? 's' : ''}</option>`)}</select></div></div>
-    <label class="lbl" for="b-loc">Public meeting place</label><input class="field" id="b-loc" name="location" required minlength="3" maxlength="200" placeholder="e.g. Starbucks, CyberHub, Gurugram">
-    <label class="lbl" for="b-note">Note (optional)</label><textarea class="field" id="b-note" name="note" rows="2" maxlength="1000" placeholder="Anything helpful for the partner"></textarea>
-    <label class="check"><input type="checkbox" name="safety_ack" required> <span>I'll meet in a public place, respect boundaries, keep payments on Gimble, and understand sexual services are not allowed.</span></label>
-    <button class="btn primary block" type="submit">Send booking request</button>
-    <p class="muted small center">Nothing is charged now. If the partner accepts, you'll pay securely through Gimble to confirm the plan. <a href="#/refunds" data-action="close-modal">Refund policy</a></p></form>`, { label: 'Booking request' });
-}
-submits.booking = async f => {
-  const b = formObj(f);
-  try {
-    await api('/bookings', { method: 'POST', body: { partner_id: Number(b.partner_id), activity: b.activity, scheduled_at: new Date(b.when).toISOString(), duration_minutes: Number(b.duration_minutes), location: b.location, note: b.note, safety_ack: !!b.safety_ack } });
-  } catch (e) {
-    if (e.status === 402) { const p = $('#view')._partner; return openMembership(() => p && bookingForm(p, b.activity)); }
-    throw e;
-  }
-  closeModal(); toast('Request sent! You\'ll be notified when the partner responds.', 'ok'); location.hash = '#/bookings';
-};
 
 // ====================== MEMBERSHIP ======================
 export async function openMembership(onDone) {

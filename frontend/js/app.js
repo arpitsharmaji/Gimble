@@ -2,14 +2,19 @@ import { reveal } from './fx.js';
 import { html, raw, $, $$, api, state, on, actions, closeModal, toast, refreshMe, modalOpen } from './core.js';
 import { openAuth, verifyPage, resetPage } from './auth.js';
 import { discoverPage, profilePage, leaveBrowse } from './discover.js';
-import { savedPage, bookingsPage, messagesPage, dashboardPage, accountPage, stopTimers, timers, pollNotifications, renderBadges } from './account.js';
+import { savedPage, dashboardPage, accountPage, stopTimers, timers, pollNotifications, renderBadges } from './account.js';
+import { bookingsPage } from './bookings.js';
+import { messagesPage } from './chat.js';
 import { adminPage } from './admin.js';
 import { homePage } from './home.js';
 import { faqPage, partnerLandingPage, supportPage } from './pages.js';
 import { earningsPage, schedulePage, kycPage } from './wallet.js';
 import { legalPage } from './legal.js';
 
-const view = $('#view');
+let view = $('#view');
+/** Each navigation renders into a brand-new <main id="view">. A slow, stale render (e.g. the home page still loading when a
+ *  login redirects to #/admin) then writes into a detached element and can never overwrite the page the user is on. */
+function freshView() { const next = document.createElement('main'); next.id = 'view'; next.tabIndex = -1; next.className = 'enter'; view.replaceWith(next); view = next; return next; }
 
 function renderHeader() {
   const me = state.me;
@@ -30,31 +35,32 @@ async function route() {
   stopTimers(); leaveBrowse(); if (modalOpen()) closeModal();
   const [pathPart, query = ''] = location.hash.replace(/^#\/?/, '').split('?'); const [path, ...rest] = pathPart.split('/'); const arg = rest.join('/');
   markNav(); window.scrollTo(0, 0); document.body.dataset.route = path;
-  view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter');
+  const host = freshView();
   try {
     switch (path) {
-      case '': await homePage(view); break;
-      case 'browse': case 'discover': await discoverPage(view, new URLSearchParams(query)); break;
-      case 'faq': faqPage(view); break;
-      case 'support': await supportPage(view); break;
-      case 'become-a-partner': partnerLandingPage(view); break;
-      case 'earnings': await earningsPage(view); break;
-      case 'schedule': await schedulePage(view); break;
-      case 'verify-id': await kycPage(view); break;
-      case 'p': await profilePage(view, arg); break;
-      case 'saved': await savedPage(view); break;
-      case 'messages': await messagesPage(view, arg); break;
-      case 'bookings': await bookingsPage(view); break;
-      case 'dashboard': await dashboardPage(view); break;
-      case 'account': await accountPage(view); break;
-      case 'admin': await adminPage(view); break;
-      case 'verify': await verifyPage(view, arg); break;
-      case 'reset': resetPage(view, arg); break;
-      case 'safety': case 'terms': case 'privacy': case 'standards': case 'refunds': legalPage(view, path); break;
-      default: view.innerHTML = html`<div class="page narrow center"><h1>Page not found</h1><a class="btn primary" href="#/">Go home</a></div>`.s;
+      case '': await homePage(host); break;
+      case 'browse': case 'discover': await discoverPage(host, new URLSearchParams(query)); break;
+      case 'faq': faqPage(host); break;
+      case 'support': await supportPage(host); break;
+      case 'become-a-partner': partnerLandingPage(host); break;
+      case 'earnings': await earningsPage(host); break;
+      case 'schedule': await schedulePage(host); break;
+      case 'verify-id': await kycPage(host); break;
+      case 'p': await profilePage(host, arg); break;
+      case 'saved': await savedPage(host); break;
+      case 'messages': await messagesPage(host, arg); break;
+      case 'bookings': await bookingsPage(host); break;
+      case 'dashboard': await dashboardPage(host); break;
+      case 'account': await accountPage(host); break;
+      case 'admin': await adminPage(host); break;
+      case 'verify': await verifyPage(host, arg); break;
+      case 'reset': resetPage(host, arg); break;
+      case 'safety': case 'terms': case 'privacy': case 'standards': case 'refunds': legalPage(host, path); break;
+      default: host.innerHTML = html`<div class="page narrow center"><h1>Page not found</h1><a class="btn primary" href="#/">Go home</a></div>`.s;
     }
-  } catch (e) { console.error(e); view.innerHTML = html`<div class="page narrow center"><h1>Something went wrong</h1><p class="muted">${e.message}</p><button class="btn primary" data-action="reload">Reload</button></div>`.s; }
-  reveal(view);
+  } catch (e) { console.error(e); host.innerHTML = html`<div class="page narrow center"><h1>Something went wrong</h1><p class="muted">${e.message}</p><button class="btn primary" data-action="reload">Reload</button></div>`.s; }
+  if (host !== view) return;   // a newer navigation took over
+  reveal(host);
   document.title = ({ '': 'Gimble - Meet your kind of company', browse: 'Browse companions · Gimble', faq: 'FAQ · Gimble', refunds: 'Refund policy · Gimble', safety: 'Safety · Gimble', terms: 'Terms · Gimble', privacy: 'Privacy · Gimble' })[path] || 'Gimble';
 }
 actions.reload = () => location.reload();
