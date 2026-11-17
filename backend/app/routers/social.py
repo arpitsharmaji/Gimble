@@ -6,7 +6,7 @@ from ..models import (User, PartnerProfile, Favorite, Message, Notification, Blo
 from ..moderation import check_text
 from ..schemas import MessageIn, ReportIn, SosIn
 from ..security import current_user, rate_limit
-from ..services import partner_json, can_chat, is_blocked, notify, audit, blocked_ids, cancel_booking, first_photo, pair_booking
+from ..services import partner_json, can_chat, chat_state, is_blocked, notify, audit, blocked_ids, cancel_booking, first_photo, pair_booking, INQUIRY_CAP
 
 router = APIRouter(prefix="/api", tags=["social"])
 REPORT_CATEGORIES = {"harassment", "sexual_solicitation", "scam_or_payment", "fake_profile",
@@ -61,14 +61,18 @@ def conversations(u: User = Depends(current_user), db: Session = Depends(get_db)
     pairs = db.query(Booking).filter(or_(Booking.customer_id == u.id, Booking.partner_id == u.id),
                                      Booking.status.in_(("accepted", "completed"))).all()
     others = {(b.partner_id if b.customer_id == u.id else b.customer_id) for b in pairs}
+    for m in db.query(Message).filter(or_(Message.sender_id == u.id, Message.receiver_id == u.id)).all():  # inquiries too
+        others.add(m.receiver_id if m.sender_id == u.id else m.sender_id)
     out = []
     for oid in others:
-        if not can_chat(db, u.id, oid):
+        if not chat_state(db, u, oid)["can_read"]:
             continue
         other = db.get(User, oid)
         last = (db.query(Message).filter(or_(and_(Message.sender_id == u.id, Message.receiver_id == oid),
                                              and_(Message.sender_id == oid, Message.receiver_id == u.id)))
                 .order_by(Message.id.desc()).first())
+        if not last and not pair_booking(db, u.id, oid):
+            continue
         unread = db.query(Message).filter_by(sender_id=oid, receiver_id=u.id, read_at=None).count()
         out.append({"user_id": oid, "name": other.name, "photo_url": first_photo(db, oid), "booking": pair_booking(db, u.id, oid),
                     "last_message": last.body if last else "",
@@ -77,10 +81,15 @@ def conversations(u: User = Depends(current_user), db: Session = Depends(get_db)
     return out
 
 
+def _state_json(st: dict) -> dict:
+    return {"can_send": st["can_send"], "reason": st["reason"], "needs_membership": st["needs_membership"], "remaining": st["remaining"]}
+
+
 @router.get("/messages/{other_id}")
 def get_messages(other_id: int, after: int = 0, u: User = Depends(current_user), db: Session = Depends(get_db)):
-    if not can_chat(db, u.id, other_id):
-        raise HTTPException(403, "Messaging is available while a booking is accepted (and for 48h after it's completed)")
+    st = chat_state(db, u, other_id)
+    if not st["can_read"]:
+        raise HTTPException(403, st["reason"])
     now = utcnow()
     db.query(Message).filter_by(sender_id=other_id, receiver_id=u.id, read_at=None).update({"read_at": now})
     db.commit()
@@ -90,20 +99,28 @@ def get_messages(other_id: int, after: int = 0, u: User = Depends(current_user),
         .order_by(Message.id.asc()).limit(300).all())
     other = db.get(User, other_id)
     return {"other": {"id": other.id, "name": other.name, "photo_url": first_photo(db, other_id), "booking": pair_booking(db, u.id, other_id)},
-            "messages": [_msg(m) for m in rows]}
+            "state": _state_json(st), "messages": [_msg(m) for m in rows]}
 
 
 @router.post("/messages", dependencies=[Depends(rate_limit("message", 60, 60))])
 def send_message(x: MessageIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
-    if not db.get(User, x.receiver_id) or not can_chat(db, u.id, x.receiver_id):
-        raise HTTPException(403, "Messaging is available while a booking is accepted (and for 48h after it's completed)")
-    problem = check_text(x.body, "message")
+    st = chat_state(db, u, x.receiver_id)
+    if not st["can_send"]:
+        raise HTTPException(402 if st["needs_membership"] else 403, st["reason"])
+    # Before a booking is accepted, keep contact details / links off-platform-proof; after it, coordination is allowed.
+    problem = check_text(x.body, "message" if st["booking_chat"] else "profile")
     if problem:
         raise HTTPException(400, problem)
+    first = db.query(Message.id).filter(or_(and_(Message.sender_id == u.id, Message.receiver_id == x.receiver_id),
+                                            and_(Message.sender_id == x.receiver_id, Message.receiver_id == u.id))).first() is None
     m = Message(sender_id=u.id, receiver_id=x.receiver_id, body=x.body)
     db.add(m)
+    if first:
+        notify(db, x.receiver_id, "message", f"{u.name.split()[0]} sent you a message", f"#/messages/{u.id}")
     db.commit()
-    return _msg(m)
+    out = _msg(m)
+    out["remaining"] = None if st["booking_chat"] or st["remaining"] is None else max(0, st["remaining"] - 1)
+    return out
 
 
 # ---------- notifications ----------

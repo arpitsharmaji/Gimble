@@ -55,7 +55,7 @@ def seed():
                                           status="approved", verified=name in ("Aanya", "Meera"), rating=rating,
                                           review_count=n, submitted_at=utcnow()))
         db.commit()
-        if settings.SEED_DEMO:  # illustrated placeholder portraits for demo partners without photos
+        if settings.SEED_DEMO and settings.STORAGE_BACKEND == "local":  # illustrated placeholder portraits for demo partners without photos
             for name, (hue, style, skin, hair) in ART.items():
                 u = db.query(User).filter_by(name=name, role="partner").first()
                 p = db.query(PartnerProfile).filter_by(user_id=u.id).first() if u else None

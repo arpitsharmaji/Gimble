@@ -1,0 +1,5 @@
+# Automatic HTTPS (Let's Encrypt) for your domain. Point the domain's DNS A record at this server first.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8000
+}

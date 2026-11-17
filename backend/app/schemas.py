@@ -185,3 +185,8 @@ class AdminAdjustIn(BaseModel):
     user_id: int
     amount: int
     note: str = Field(min_length=3, max_length=200)
+
+
+class AdminGrantIn(BaseModel):
+    plan: str = "monthly"
+    note: str = Field(default="", max_length=120)

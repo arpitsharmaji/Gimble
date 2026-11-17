@@ -1,6 +1,6 @@
 import io, secrets
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from PIL import Image, ImageOps
 from ..config import settings, KYC_ID_TYPES
@@ -9,6 +9,7 @@ from ..models import User, PartnerProfile, KycSubmission, utcnow
 from ..schemas import AdminKycIn
 from ..security import current_user, admin_user, rate_limit
 from ..services import notify, audit
+from ..storage import get_storage
 
 router = APIRouter(prefix="/api", tags=["kyc"])
 Image.MAX_IMAGE_PIXELS = 40_000_000
@@ -24,16 +25,20 @@ async def _store(file: UploadFile) -> str:
     except Exception:
         raise HTTPException(400, "Upload clear JPG, PNG or WebP photos")
     img.thumbnail((2000, 2000))
-    settings.PRIVATE_DIR.mkdir(parents=True, exist_ok=True)
     name = f"kyc_{secrets.token_hex(12)}.jpg"
-    img.save(settings.PRIVATE_DIR / name, "JPEG", quality=85)
+    buf = io.BytesIO(); img.save(buf, "JPEG", quality=85)
+    try:
+        get_storage().put_private(name, buf.getvalue())
+    except Exception:
+        raise HTTPException(503, "Document storage is unavailable right now. Please try again shortly.")
     return name
 
 
 def _delete_files(sub: KycSubmission):
     for n in (sub.id_file, sub.selfie_file):
         if n:
-            (settings.PRIVATE_DIR / n).unlink(missing_ok=True)
+            try: get_storage().delete_private(n)
+            except Exception: pass
     sub.id_file = sub.selfie_file = ""
 
 
@@ -82,9 +87,10 @@ def admin_list(a: User = Depends(admin_user), db: Session = Depends(get_db)):
 def admin_file(sub_id: int, which: str, a: User = Depends(admin_user), db: Session = Depends(get_db)):
     s = db.get(KycSubmission, sub_id)
     name = (s.id_file if which == "id" else s.selfie_file if which == "selfie" else "") if s else ""
-    if not name or not (settings.PRIVATE_DIR / name).is_file():
+    data = get_storage().get_private(name) if name else None
+    if not data:
         raise HTTPException(404, "File not available")
-    return FileResponse(settings.PRIVATE_DIR / name, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @router.patch("/admin/kyc/{sub_id}")

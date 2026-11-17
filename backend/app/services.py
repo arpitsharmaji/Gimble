@@ -6,6 +6,7 @@ from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 from .config import PLANS, settings, REFUND_FULL_HOURS, REFUND_HALF_HOURS, PAY_DEADLINE_MINUTES
 from .mailer import send_email
+from .storage import media_url
 from . import payments
 from .models import (User, PartnerProfile, Membership, Booking, Notification, Block,
                      AuditLog, LedgerEntry, utcnow)
@@ -13,7 +14,7 @@ from .security import age_from
 
 
 log = logging.getLogger("gimble.services")
-EMAIL_KINDS = {"booking", "membership", "payment", "payout", "profile", "kyc", "support"}
+EMAIL_KINDS = {"booking", "membership", "payment", "payout", "profile", "kyc", "support", "message"}
 IST = timedelta(hours=5, minutes=30)  # India is a single timezone, no DST
 
 
@@ -39,7 +40,7 @@ def user_json(u: User) -> dict:
 def partner_json(p: PartnerProfile, own: bool = False) -> dict:
     """Public partner representation. Never includes email."""
     rates = json.loads(p.rates_json or "{}")
-    photos = json.loads(p.photos_json or "[]")
+    photos = [media_url(u) for u in json.loads(p.photos_json or "[]")]
     data = {
         "id": p.user_id, "name": p.user.name, "age": age_from(p.user.dob), "city": p.user.city,
         "gender": p.user.gender, "headline": p.headline, "bio": p.bio,
@@ -90,15 +91,16 @@ def refund_percent_if_customer_cancels(b: Booking) -> int:
 def first_photo(db: Session, user_id: int) -> str:
     prof = db.query(PartnerProfile).filter_by(user_id=user_id).first()
     photos = json.loads(prof.photos_json or "[]") if prof else []
-    return photos[0] if photos else ""
+    return media_url(photos[0]) if photos else ""
 
 
 def pair_booking(db: Session, a: int, b: int) -> dict | None:
-    """The most relevant booking between two users (chat context): the next upcoming plan, else the latest one."""
+    """Chat context: the next upcoming accepted plan, else a plan completed within the 48h chat window; otherwise None."""
     pair = or_(and_(Booking.customer_id == a, Booking.partner_id == b), and_(Booking.customer_id == b, Booking.partner_id == a))
     q = (db.query(Booking).filter(pair, Booking.status == "accepted", Booking.scheduled_at >= utcnow() - timedelta(hours=8))
          .order_by(Booking.scheduled_at.asc()).first()
-         or db.query(Booking).filter(pair, Booking.status.in_(("accepted", "completed"))).order_by(Booking.scheduled_at.desc()).first())
+         or db.query(Booking).filter(pair, Booking.status == "completed", Booking.updated_at >= utcnow() - timedelta(hours=48))
+         .order_by(Booking.scheduled_at.desc()).first())
     return {"id": q.id, "activity": q.activity, "scheduled_at": q.scheduled_at.isoformat() + "Z", "status": q.status,
             "location": q.location} if q else None
 
@@ -219,6 +221,46 @@ def can_chat(db: Session, a: int, b: int) -> bool:
     return db.query(Booking.id).filter(pair, or_(
         Booking.status == "accepted",
         and_(Booking.status == "completed", Booking.updated_at >= cutoff))).first() is not None
+
+
+INQUIRY_CAP = 3  # messages a customer may send before the partner has replied
+
+
+def chat_state(db: Session, me: User, other_id: int) -> dict:
+    """Single source of truth for who may read / send messages between `me` and `other_id`.
+
+    * Booking chat (accepted booking, or completed <48h ago): open both ways.
+    * Pre-booking inquiry: only a *member customer* may start it, only to an approved partner, at most INQUIRY_CAP messages
+      until the partner replies. Partners can only reply to customers who wrote first (no cold messages).
+    """
+    from .models import Message
+    closed = {"can_read": False, "can_send": False, "reason": "Messaging isn't available with this person.", "needs_membership": False,
+              "remaining": None, "booking_chat": False}
+    other = db.get(User, other_id)
+    if not other or not other.active or other_id == me.id or is_blocked(db, me.id, other_id):
+        return closed
+    if can_chat(db, me.id, other_id):
+        return {**closed, "can_read": True, "can_send": True, "reason": "", "booking_chat": True}
+    sent = db.query(Message).filter_by(sender_id=me.id, receiver_id=other_id).count()
+    recv = db.query(Message).filter_by(sender_id=other_id, receiver_id=me.id).count()
+    if me.role == "partner":
+        if recv > 0:
+            return {**closed, "can_read": True, "can_send": True, "reason": ""}
+        return {**closed, "reason": "Customers start conversations. You can reply once they message you."}
+    if me.role != "customer":
+        return closed
+    partner_ok = db.query(PartnerProfile.id).join(User, User.id == PartnerProfile.user_id).filter(
+        PartnerProfile.user_id == other_id, PartnerProfile.status == "approved", User.active.is_(True)).first() is not None
+    if not partner_ok and sent + recv == 0:
+        return closed
+    if recv > 0:  # they replied: the conversation is fully open
+        return {**closed, "can_read": True, "can_send": True, "reason": ""}
+    if not active_membership(db, me.id):
+        return {**closed, "can_read": True, "needs_membership": True, "reason": f"A membership is needed to message {other.name.split()[0]}."}
+    remaining = max(0, INQUIRY_CAP - sent)
+    if remaining == 0:
+        return {**closed, "can_read": True, "remaining": 0, "reason": f"You've sent {INQUIRY_CAP} messages. Please wait for {other.name.split()[0]} to reply."}
+    return {**closed, "can_read": True, "can_send": True, "remaining": remaining, "reason": ""}
 
 
 def require_adult_active(u: User):

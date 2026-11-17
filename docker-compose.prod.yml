@@ -1,0 +1,55 @@
+# One-server production stack:  PostgreSQL (persistent volume) + Gimble app + Caddy (automatic HTTPS).
+#   cp .env.production.example .env.production   # fill it in
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gimble}
+      POSTGRES_USER: ${POSTGRES_USER:-gimble}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - pgdata:/var/lib/postgresql/data          # <- your users, bookings and messages live here; survives restarts and redeploys
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gimble} -d ${POSTGRES_DB:-gimble}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gimble}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-gimble}
+    volumes:
+      - uploads:/data/uploads                    # <- profile photos (only used when STORAGE_BACKEND=local)
+      - private:/data/private                    # <- ID documents until reviewed (only used when STORAGE_BACKEND=local)
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data                         # <- HTTPS certificates
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  uploads:
+  private:
+  caddy_data:
+  caddy_config:

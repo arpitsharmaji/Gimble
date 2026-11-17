@@ -1,3 +1,29 @@
+# Gimble v7 - production readiness (messaging + permanent storage)
+
+**1. Messaging before booking.** Customers with a membership can now message a partner straight from their profile (new 💬 Message button; also in the
+swipe-details sheet). Safeguards: only customers can start a chat, only to live partners; up to **3 messages until the partner replies**; no phone numbers,
+links or payment requests until a booking is accepted; partners can't cold-message anyone; blocking works; the partner gets a notification/email for a first
+message. Once the partner replies the chat is fully open. Chat UI shows a "Book" shortcut, starter replies, a messages-left hint and a clear locked state
+("membership needed" / "wait for a reply"). Messages tab lists inquiries as well as booking chats.
+
+**2. Data no longer disappears.** Root cause: users/bookings lived in a SQLite file and photos in a local folder, which most hosts wipe on every deploy.
+* Real **PostgreSQL** support (tested on PostgreSQL 16: full suite + a restart-persistence run with 2 workers), `postgres://` URLs accepted, connection pooling,
+  start-up lock so several workers can boot together safely.
+* Pluggable **file storage**: local folder *or* any S3-compatible bucket (R2/S3/B2/Spaces) with a **separate private bucket** for ID documents. Optional
+  CDN URL for photos. Existing `/uploads/...` links keep working. Tested against a mocked S3.
+* **Safety net:** in production the app refuses to start on SQLite (unless you explicitly opt in for a persistent disk), on incomplete S3 settings, or with
+  `REQUIRE_VERIFIED_EMAIL=true` but no SMTP (which would lock everyone out of booking).
+* `/api/health/deep` checks database *and* storage for uptime monitors.
+* Tools: SQLite -> Postgres migration script (verified: identical row counts, ids preserved, sequences continue), local photos -> bucket sync, nightly backup script.
+* Admin: **Grant membership** and **Verify email** buttons (for launch before Razorpay/SMTP are ready, and for support).
+
+**3. Deployment kit:** production `Dockerfile` (the old one didn't include the frontend), `docker-compose.prod.yml` (Postgres + app + Caddy HTTPS, persistent volumes),
+`Caddyfile`, `.env.production.example`, and a step-by-step **DEPLOY.md** (VPS path and platform path, R2 walk-through, checklist, backups, troubleshooting).
+
+Tests: 44 backend tests (also run green on PostgreSQL via `TEST_DATABASE_URL`).
+
+---
+
 # Gimble v6 - UI polish pass (bookings, chat, dashboard, account, booking flow)
 
 The browse / landing / profile pages already had the new look; v6 brings the rest of the app up to the same standard.

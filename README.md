@@ -1,7 +1,10 @@
-# Gimble - companion booking platform (v6)
+# Gimble - companion booking platform (v7)
 
 FastAPI + SQLAlchemy backend, dependency-free vanilla-JS PWA frontend (served by the backend).
 See **CHANGES.md** for the bugs found in the original upload and everything added.
+
+## Deploying
+Read **DEPLOY.md** - it explains why data vanished on hosting platforms and how to run Gimble with permanent storage.
 
 ## What's in v4
 A swipe-first browsing experience, a redesigned landing page and a polished app shell - see **CHANGES.md** and `docs/screenshots/`. First start generates illustrated demo portraits (takes a few seconds).

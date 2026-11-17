@@ -5,9 +5,10 @@ from ..db import get_db
 from ..config import settings
 from ..models import (User, PartnerProfile, Booking, Membership, Report, AuditLog, Review, PayoutRequest,
                       KycSubmission, SupportTicket, LedgerEntry, utcnow)
-from ..schemas import (AdminPartnerDecisionIn, AdminVerifyIn, AdminSuspendIn, AdminResolveIn, AdminPayoutIn, AdminAdjustIn)
+from ..schemas import (AdminGrantIn, AdminPartnerDecisionIn, AdminVerifyIn, AdminSuspendIn, AdminResolveIn, AdminPayoutIn, AdminAdjustIn)
 from ..security import admin_user
-from ..services import (partner_json, booking_json, notify, audit, cancel_booking, credit, _do_refund)
+from ..services import (partner_json, booking_json, notify, audit, cancel_booking, credit, _do_refund, grant_membership, active_membership)
+from ..config import PLANS
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -83,6 +84,7 @@ def users(q: str = "", a: User = Depends(admin_user), db: Session = Depends(get_
         qs = qs.filter(or_(func.lower(User.name).like(like), func.lower(User.email).like(like)))
     return [{"id": u.id, "name": u.name, "email": u.email, "role": u.role, "city": u.city, "active": u.active,
              "suspended_reason": u.suspended_reason, "email_verified": u.email_verified,
+             "member": bool(u.role == "customer" and active_membership(db, u.id)),
              "created_at": u.created_at.isoformat() + "Z"} for u in qs.order_by(User.id.desc()).limit(100).all()]
 
 
@@ -212,3 +214,30 @@ def adjust(x: AdminAdjustIn, a: User = Depends(admin_user), db: Session = Depend
     audit(db, a.id, "ledger_adjust", f"user:{x.user_id}", f"{x.amount}: {x.note}")
     db.commit()
     return {"ok": True}
+
+
+# ---------------- support tools ----------------
+@router.post("/users/{user_id}/membership")
+def grant(user_id: int, x: AdminGrantIn, a: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Give a customer a membership without payment (comps, support fixes, running before payments are configured)."""
+    u = db.get(User, user_id)
+    if not u or u.role != "customer":
+        raise HTTPException(400, "Memberships can only be granted to customer accounts")
+    if x.plan not in PLANS:
+        raise HTTPException(400, "Invalid plan")
+    m = grant_membership(db, u.id, x.plan, f"ADMIN-GRANT:{a.id}:{x.note[:60]}")
+    notify(db, u.id, "membership", "Your Gimble membership is active. You can now send booking requests.", "#/browse")
+    audit(db, a.id, "membership_granted", f"user:{u.id}", f"{x.plan} {x.note}")
+    db.commit()
+    return {"expires_at": m.expires_at.isoformat() + "Z"}
+
+
+@router.patch("/users/{user_id}/verify-email")
+def force_verify(user_id: int, a: User = Depends(admin_user), db: Session = Depends(get_db)):
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "User not found")
+    u.email_verified = True
+    audit(db, a.id, "email_verified_manually", f"user:{u.id}")
+    db.commit()
+    return {"email_verified": True}

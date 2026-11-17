@@ -153,9 +153,17 @@ export function partnerSheet(p) {
     <p class="muted small">⌖ ${p.city}${p.verified ? ' · ✓ ID verified' : ''} · ${p.available ? '● Available' : 'Not taking requests'}</p>
     ${p.headline ? html`<p class="headline">${p.headline}</p>` : ''}<p>${p.bio}</p>
     <div class="rate-list">${Object.entries(p.rates).map(([a, v]) => html`<div class="rate-row"><span>${emojiFor(a)} ${a}</span><strong>${inr(v)}</strong></div>`)}</div>
-    <div class="row"><a class="btn ghost grow" href="#/p/${p.id}" data-action="close-modal">Full profile</a><button class="btn primary grow" data-action="sheet-book" data-id="${p.id}">Request booking</button></div>`, { label: p.name });
+    <div class="row"><a class="btn ghost" href="#/p/${p.id}" data-action="close-modal">Profile</a><button class="btn ghost" data-action="sheet-msg" data-id="${p.id}">💬 Message</button><button class="btn primary grow" data-action="sheet-book" data-id="${p.id}">Book</button></div>`, { label: p.name });
   $('#modal-root')._p = p;
 }
+function startMessage(id) {
+  login(() => {
+    if (state.me.role !== 'customer') { toast(state.me.role === 'partner' ? 'Partners can reply to customers who message them first.' : 'Only customer accounts can message partners.', 'error'); return; }
+    location.hash = '#/messages/' + id;
+  });
+}
+actions['msg-partner'] = el => startMessage(Number(el.dataset.id));
+actions['sheet-msg'] = el => { closeModal(); startMessage(Number(el.dataset.id)); };
 actions['sheet-book'] = () => { const p = $('#modal-root')._p; closeModal(); if (p) startBooking(p, Object.keys(p.rates)[0]); };
 
 // ====================== PROFILE PAGE ======================
@@ -188,7 +196,7 @@ export async function profilePage(root, id) {
       <h2>Reviews</h2>${reviews.length ? html`${breakdown(reviews)}<div class="reviews">${reviews.map(r => html`<div class="review"><div class="between"><b>${r.reviewer}</b><span class="stars">${stars(r.rating)}</span></div><p>${r.comment || html`<span class="muted">No written comment.</span>`}</p><p class="muted small">${fmtD(r.created_at)} · verified booking</p>${r.partner_reply ? html`<div class="reply"><b>${p.name} replied:</b> ${r.partner_reply}</div>` : ''}</div>`)}</div>` : html`<p class="muted">No reviews yet. Only customers with a completed booking can review.</p>`}
       <div id="similar"></div>
     </div></div>
-    <div class="pf-bar"><div><small class="muted">from</small><b>${inr(p.min_rate)}</b></div><button class="btn primary big grow" data-action="book" data-id="${p.id}" ${own ? 'disabled' : ''}>${own ? 'This is your profile' : 'Request booking'}</button></div></div>`.s;
+    <div class="pf-bar"><div><small class="muted">from</small><b>${inr(p.min_rate)}</b></div>${own ? '' : html`<button class="btn ghost big msg-btn" data-action="msg-partner" data-id="${p.id}" aria-label="Message ${p.name}">💬<span class="hide-xs"> Message</span></button>`}<button class="btn primary big grow" data-action="book" data-id="${p.id}" ${own ? 'disabled' : ''}>${own ? 'This is your profile' : 'Request booking'}</button></div></div>`.s;
   root._partner = p;
   api(`/partners?city=${encodeURIComponent(p.city)}&limit=8`).then(r => { const more = r.items.filter(x => x.id !== p.id).slice(0, 6), host = $('#similar'); if (host && more.length) { host.innerHTML = html`<h2>More companions in ${p.city}</h2><div class="hscroll">${more.map(card)}</div>`.s; } }).catch(() => {});
   const track = $('#pfTrack'), dots = $$('#pfDots i');

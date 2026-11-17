@@ -1,4 +1,4 @@
-import io, json, re, secrets
+import io, json, logging, re, secrets
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from ..moderation import check_text
 from ..schemas import ProfileIn, AvailabilityIn, ScheduleIn
 from ..security import current_user, optional_user
 from ..services import partner_json, blocked_ids, audit, notify
+from ..storage import get_storage, canonical_photo, media_url
 
 router = APIRouter(prefix="/api", tags=["partners"])
 Image.MAX_IMAGE_PIXELS = 40_000_000
@@ -148,9 +149,10 @@ def _clean_profile(x: ProfileIn, u: User) -> dict:
             raise HTTPException(400, problem)
     photos = []
     for url in x.photos:
-        if not re.fullmatch(rf"/uploads/u{u.id}_[0-9a-f]{{16}}\.jpg", url) or not (settings.UPLOAD_DIR / url.split("/")[-1]).is_file():
+        canon = canonical_photo(url, u.id)
+        if not canon:
             raise HTTPException(400, "Photos must be uploaded through Gimble")
-        photos.append(url)
+        photos.append(canon)
     return {"headline": headline, "bio": bio, "activities": activities, "rates": rates,
             "languages": languages, "photos": photos}
 
@@ -219,12 +221,17 @@ async def upload_photo(file: UploadFile = File(...), u: User = Depends(current_u
     except Exception:
         raise HTTPException(400, "Upload a valid JPG, PNG or WebP image")
     img.thumbnail((1600, 1600))
-    settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    if len(list(settings.UPLOAD_DIR.glob(f"u{u.id}_*"))) >= 30:
+    store = get_storage()
+    if store.count_public(f"u{u.id}_") >= 30:
         raise HTTPException(400, "Upload limit reached. Remove unused photos first.")
     name = f"u{u.id}_{secrets.token_hex(8)}.jpg"
-    img.save(settings.UPLOAD_DIR / name, "JPEG", quality=85, optimize=True)
-    return {"url": f"/uploads/{name}"}
+    buf = io.BytesIO(); img.save(buf, "JPEG", quality=85, optimize=True)
+    try:
+        store.put_public(name, buf.getvalue())
+    except Exception:
+        logging.getLogger("gimble.storage").exception("Photo upload to storage failed")
+        raise HTTPException(503, "Photo storage is unavailable right now. Please try again shortly.")
+    return {"url": media_url(f"/uploads/{name}")}
 
 
 DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
