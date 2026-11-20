@@ -8,7 +8,7 @@ from .config import PLANS, settings, REFUND_FULL_HOURS, REFUND_HALF_HOURS, PAY_D
 from .mailer import send_email
 from .storage import media_url
 from . import payments
-from .models import (User, PartnerProfile, Membership, Booking, Notification, Block,
+from .models import (ManualPayment, User, PartnerProfile, Membership, Booking, Notification, Block,
                      AuditLog, LedgerEntry, utcnow)
 from .security import age_from
 
@@ -149,6 +149,13 @@ def _do_refund(db: Session, b: Booking, amount: int):
         return
     b.refund_amount = amount
     full = amount >= b.paid_amount
+    if b.payment_id.startswith("UPI:"):
+        # Paid by manual UPI: money is in our own account, so staff send the refund by UPI and then click "Mark refunded".
+        b.payment_status = "refund_pending"
+        notify(db, b.customer_id, "payment", f"Your refund of ₹{amount} is being processed. We send it to the UPI account you paid from within 2-3 working days.", "#/bookings")
+        for a in db.query(User).filter_by(role="admin", active=True).all():
+            notify(db, a.id, "report", f"Refund due: ₹{amount} to customer for booking #{b.id} (paid by UPI {b.payment_id[4:]})", "#/admin")
+        return
     if b.payment_id and not b.payment_id.startswith("DEMO") and settings.razorpay_enabled:
         try:
             payments.refund(b.payment_id, amount * 100)
@@ -201,8 +208,10 @@ def expire_stale(db: Session):
     changed = (db.query(Booking).filter(Booking.status == "requested", Booking.scheduled_at < now)
                .update({"status": "expired", "status_reason": "No response before the start time"}))
     if settings.booking_payments_on:
+        waiting = {r[0] for r in db.query(ManualPayment.booking_id).filter(ManualPayment.kind == "booking", ManualPayment.status == "pending")}
         due = db.query(Booking).filter(Booking.status == "accepted", Booking.payment_status == "unpaid",
                                        Booking.scheduled_at < now + timedelta(minutes=PAY_DEADLINE_MINUTES)).all()
+        due = [b for b in due if b.id not in waiting]  # a payment proof is awaiting admin review: don't cancel under the customer
         for b in due:
             cancel_booking(db, b, "Payment was not completed in time")
             notify(db, b.customer_id, "booking", f"Your {b.activity} booking was cancelled because payment wasn't completed in time.", "#/bookings")

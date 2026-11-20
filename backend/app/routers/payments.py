@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from ..config import settings, PLANS, PAY_DEADLINE_MINUTES
 from ..db import get_db
-from ..models import User, Booking, PaymentOrder, utcnow
+from ..models import User, Booking, PaymentOrder, ManualPayment, utcnow
 from ..schemas import VerifyPaymentIn
 from ..security import current_user, rate_limit
 from .. import payments
@@ -50,6 +50,26 @@ def verify(x: VerifyPaymentIn, u: User = Depends(current_user), db: Session = De
     return {"message": "Payment confirmed"}
 
 
+@router.get("/payments/orders/{provider_order_id}", dependencies=[Depends(rate_limit("payorder", 90, 600))])
+def order_status(provider_order_id: str, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Polled by the browser after checkout. If we have not heard from Razorpay yet (UPI app-switch),
+    ask Razorpay directly, so a paid order is never left dangling. Only a captured payment whose amount
+    matches the order we created activates it."""
+    order = db.query(PaymentOrder).filter_by(provider_order_id=provider_order_id, user_id=u.id).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if order.status == "created" and settings.razorpay_enabled:
+        try:
+            for pay in payments.order_payments(provider_order_id):
+                if pay.get("status") == "captured" and pay.get("amount") == order.amount_paise:
+                    activate_order(db, order, pay.get("id", ""))
+                    db.commit()
+                    break
+        except Exception:
+            log.warning("Order reconcile failed for %s", provider_order_id, exc_info=True)
+    return {"status": order.status}
+
+
 @router.post("/webhooks/razorpay")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     body = await request.body()
@@ -61,6 +81,18 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         order = db.query(PaymentOrder).filter_by(provider_order_id=pay.get("order_id", "")).first()
         if order and pay.get("amount") == order.amount_paise:
             activate_order(db, order, pay.get("id", ""))
+            db.commit()
+    elif event.get("event") == "payment.failed":
+        # UPI attempts fail often (declined, timed out, wrong PIN) and the customer can retry on the same
+        # order, so this is informational: never downgrade an order that is already paid.
+        pay = event.get("payload", {}).get("payment", {}).get("entity", {})
+        log.info("Razorpay payment failed: order=%s reason=%s", pay.get("order_id"), pay.get("error_description"))
+    elif event.get("event") == "refund.failed":
+        ref = event.get("payload", {}).get("refund", {}).get("entity", {})
+        b = db.query(Booking).filter_by(payment_id=ref.get("payment_id", "")).first()
+        if b:
+            b.payment_status = "refund_pending"  # surfaces in the admin console for a manual retry
+            audit(db, None, "refund_failed", f"booking:{b.id}", ref.get("id", ""))
             db.commit()
     return {"ok": True}
 
@@ -95,6 +127,10 @@ def pay_booking(booking_id: int, u: User = Depends(current_user), db: Session = 
         return {"mode": "razorpay", "key_id": settings.RAZORPAY_KEY_ID, "order_id": order["id"], "amount": amount,
                 "currency": "INR", "name": "Gimble", "description": f"{b.activity} booking #{b.id}",
                 "prefill": {"name": u.name, "email": u.email}}
+    if settings.manual_upi_enabled:
+        if db.query(ManualPayment).filter_by(user_id=u.id, kind="booking", booking_id=b.id, status="pending").first():
+            raise HTTPException(409, "Your payment proof is already under review. We'll notify you as soon as it's checked.")
+        return {"mode": "manual", "amount": amount, "booking_id": b.id}
     if settings.DEMO_PAYMENTS_ENABLED:
         return {"mode": "demo", "amount": amount}
     raise HTTPException(503, "Payments are not configured yet")
@@ -103,7 +139,7 @@ def pay_booking(booking_id: int, u: User = Depends(current_user), db: Session = 
 @router.post("/bookings/{booking_id}/demo-pay")
 def demo_pay(booking_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
     """Development only: marks a booking paid WITHOUT collecting money."""
-    if not settings.DEMO_PAYMENTS_ENABLED or settings.razorpay_enabled:
+    if not settings.DEMO_PAYMENTS_ENABLED or settings.razorpay_enabled or settings.manual_upi_enabled:
         raise HTTPException(404, "Demo payments are disabled")
     b = _payable(db, booking_id, u)
     mark_booking_paid(db, b, "DEMO-NO-MONEY")

@@ -104,7 +104,7 @@ Until it works, set `REQUIRE_VERIFIED_EMAIL=false` and use **Admin -> Users -> V
 - [ ] Register a test customer. Until Razorpay is live, give them access in **Admin -> Users -> Grant membership**.
 - [ ] Message the partner from their profile, send a booking request, accept it, and walk through the flow.
 - [ ] **Redeploy / restart, then confirm the users, photos and messages are still there.** (This is the test that matters.)
-- [ ] Razorpay: add *test* keys first; add the webhook `https://your-domain/api/webhooks/razorpay` for `payment.captured` and `order.paid`; run a test payment and a test refund; only then switch to live keys.
+- [ ] Razorpay: add *test* keys first; add the webhook `https://your-domain/api/webhooks/razorpay` for `payment.captured`, `order.paid`, `payment.failed` and `refund.failed`; run a test payment and a test refund; only then switch to live keys.
 - [ ] Have a lawyer finalise Terms / Privacy / Refund pages (they are drafts), and review GST / payments / DPDP obligations.
 - [ ] Staff the admin queues (approvals, ID checks, reports, payouts, support).
 

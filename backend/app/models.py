@@ -78,6 +78,25 @@ class PaymentOrder(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class ManualPayment(Base):
+    """A customer-submitted UPI payment (QR + screenshot + UTR) waiting for / decided by an admin."""
+    __tablename__ = "manual_payments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(12))                      # membership|booking
+    plan: Mapped[str] = mapped_column(String(30), default="")
+    booking_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    amount: Mapped[int] = mapped_column(Integer)                       # INR the customer must have paid (set by the server)
+    utr: Mapped[str] = mapped_column(String(40), index=True)
+    proof_file: Mapped[str] = mapped_column(String(80), default="")    # private storage name, never public
+    proof_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    status: Mapped[str] = mapped_column(String(12), default="pending", index=True)  # pending|approved|rejected
+    reason: Mapped[str] = mapped_column(String(300), default="")
+    decided_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Booking(Base):
     __tablename__ = "bookings"
     id: Mapped[int] = mapped_column(primary_key=True)

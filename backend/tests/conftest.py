@@ -3,7 +3,7 @@ _tmp = tempfile.mkdtemp()
 os.environ.update({
     "DATABASE_URL": os.environ.get("TEST_DATABASE_URL", f"sqlite:///{_tmp}/test.db"), "UPLOAD_DIR": f"{_tmp}/uploads", "PRIVATE_DIR": f"{_tmp}/private", "APP_ENV": "development",
     "SEED_DEMO": "true", "DEMO_PAYMENTS_ENABLED": "true", "RATE_LIMIT_ENABLED": "false",
-    "RAZORPAY_KEY_ID": "", "RAZORPAY_KEY_SECRET": "",
+    "RAZORPAY_KEY_ID": "", "RAZORPAY_KEY_SECRET": "", "UPI_ID": "",
 })
 import pytest
 from datetime import datetime, timedelta

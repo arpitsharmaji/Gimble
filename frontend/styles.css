@@ -510,3 +510,9 @@ html,body{overflow-x:clip}
 .ctx-chip.soft{background:rgba(255,255,255,.07);color:var(--muted);border-color:var(--line)}
 .th-head .btn.sm{flex:none}
 @media(max-width:520px){.pf-bar .msg-btn{padding:0 14px;font-size:20px}}
+
+/* manual UPI QR payments */
+.upi-box{display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
+.upi-qr{width:220px;height:220px;max-width:100%;border-radius:12px;background:#fff;padding:8px;object-fit:contain}
+.upi-meta{display:flex;flex-direction:column;gap:4px;min-width:0}.upi-id{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.upi-id code{word-break:break-all}
+.mini-steps{margin:8px 0 14px;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14.5px;color:#d9d3e0}

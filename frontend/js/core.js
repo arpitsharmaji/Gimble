@@ -181,13 +181,41 @@ const _scripts = {};
 export const loadScript = src => _scripts[src] ||= new Promise((res, rej) => {
   const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load the payment window.')); document.head.append(s);
 });
+/** Poll our server until the order is paid (UPI: the customer may pay inside GPay/PhonePe/Paytm and come back
+ *  to a suspended tab, in which case Razorpay's JS callback never fires). Resolves true if paid. */
+async function waitForPayment(orderId, { tries = 40, every = 3000 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    try { if ((await api(`/payments/orders/${encodeURIComponent(orderId)}`)).status === 'paid') return true; } catch { /* keep trying */ }
+    await new Promise(r => setTimeout(r, every));
+  }
+  return false;
+}
+
 export async function openRazorpay(co, onSuccess) {
   await loadScript('https://checkout.razorpay.com/v1/checkout.js');
+  let settled = false;
+  const finish = async resp => {
+    if (settled) return; settled = true;
+    try { await onSuccess(resp); } catch (e) { toast(e.message + ' If you were charged, this will be confirmed automatically within a few minutes.', 'error'); }
+  };
   const rzp = new window.Razorpay({ key: co.key_id, amount: co.amount, currency: co.currency, name: co.name, description: co.description,
-    order_id: co.order_id, prefill: co.prefill, theme: { color: '#6a3dff' },
-    handler: async resp => { try { await onSuccess(resp); } catch (e) { toast(e.message + ' If you were charged, this will be confirmed automatically within a few minutes.', 'error'); } } });
-  rzp.on('payment.failed', () => toast('Payment failed. You have not been charged. Please try again.', 'error'));
+    order_id: co.order_id, prefill: co.prefill, theme: { color: '#6a3dff' }, retry: { enabled: true, max_count: 3 },
+    // UPI first (on phones Checkout opens the installed UPI app via intent); cards / netbanking / wallets stay available.
+    config: { display: { blocks: { upi: { name: 'Pay with UPI', instruments: [{ method: 'upi' }] } }, sequence: ['block.upi'], preferences: { show_default_blocks: true } } },
+    handler: finish,
+    modal: { confirm_close: true, ondismiss: async () => {
+      if (settled) return;
+      // Closed without a callback: the payment may still have gone through in the UPI app. Check before giving up.
+      toast('Checking your payment status…', 'info');
+      if (await waitForPayment(co.order_id, { tries: 10 })) await finish(null);
+    } } });
+  rzp.on('payment.failed', r => toast((r?.error?.description || 'Payment failed') + '. You have not been charged. Please try again.', 'error'));
   rzp.open();
+  // Mobile UPI intent backgrounds this tab; if the callback never arrives, notice the payment via the server.
+  document.addEventListener('visibilitychange', async function onVis() {
+    if (settled) return document.removeEventListener('visibilitychange', onVis);
+    if (document.visibilityState === 'visible' && await waitForPayment(co.order_id, { tries: 5, every: 2000 })) { document.removeEventListener('visibilitychange', onVis); await finish(null); }
+  });
 }
 
 // ---------- shared UI building blocks ----------

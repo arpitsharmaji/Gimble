@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from .config import settings, validate_for_production
 from .db import Base, engine, SessionLocal
-from .routers import auth, partners, bookings, social, membership, admin, payments, wallet, kyc, support, home
+from .routers import auth, partners, bookings, social, membership, admin, payments, wallet, kyc, support, home, manual_payments
 from .migrate import ensure_columns
 from .seed import seed
 from .storage import get_storage, NAME_RE
@@ -58,7 +58,7 @@ app = FastAPI(title="Gimble API", version="3.0.0", lifespan=lifespan,
               docs_url=None if settings.is_production else "/docs",
               redoc_url=None, openapi_url=None if settings.is_production else "/openapi.json")
 
-for r in (auth, partners, bookings, social, membership, payments, wallet, kyc, support, home, admin):
+for r in (auth, partners, bookings, social, membership, payments, manual_payments, wallet, kyc, support, home, admin):
     app.include_router(r.router)
 
 
@@ -75,9 +75,10 @@ async def security_headers(request: Request, call_next):
             u = urlparse(settings.S3_PUBLIC_BASE_URL); cdn = f" {u.scheme}://{u.netloc}"
         resp.headers.setdefault(
             "Content-Security-Policy",
-            f"default-src 'self'; img-src 'self' data: blob:{cdn}; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self' https://checkout.razorpay.com; frame-src https://api.razorpay.com; "
-            "connect-src 'self' https://lumberjack.razorpay.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+            f"default-src 'self'; img-src 'self' data: blob: https://*.razorpay.com{cdn}; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' https://checkout.razorpay.com; frame-src https://api.razorpay.com https://checkout.razorpay.com; "
+            "connect-src 'self' https://lumberjack.razorpay.com https://api.razorpay.com https://checkout.razorpay.com; "
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
     if request.url.path.startswith("/api/"):
         resp.headers.setdefault("Cache-Control", "no-store")
     return resp

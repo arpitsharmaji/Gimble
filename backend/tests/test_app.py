@@ -310,3 +310,28 @@ def test_razorpay_signatures_and_webhook(client, customer, monkeypatch):
     with SessionLocal() as db:
         from app.models import Membership
         assert db.query(Membership).filter(Membership.payment_ref == "razorpay:pay_2").count() == 1
+
+
+def test_upi_order_status_reconciles_when_browser_never_reports(client, customer, monkeypatch):
+    """UPI app-switch: the JS callback never fires, but polling our server must still activate a paid order."""
+    from app import payments
+    from app.db import SessionLocal
+    from app.models import Membership, PaymentOrder
+    monkeypatch.setattr(settings, "RAZORPAY_KEY_ID", "rzp_test_x")
+    monkeypatch.setattr(settings, "RAZORPAY_KEY_SECRET", "secret123")
+    monkeypatch.setattr(payments, "create_order", lambda amt, rcpt, notes: {"id": "order_UPI1"})
+    client.post("/api/membership/checkout", json={"plan": "monthly"}, headers=customer)
+    # attempt failed / still pending -> stays "created"
+    monkeypatch.setattr(payments, "order_payments", lambda oid: [{"id": "pay_u0", "status": "failed", "amount": 50000}])
+    assert client.get("/api/payments/orders/order_UPI1", headers=customer).json()["status"] == "created"
+    # captured but for the WRONG amount -> must not activate
+    monkeypatch.setattr(payments, "order_payments", lambda oid: [{"id": "pay_u1", "status": "captured", "amount": 100}])
+    assert client.get("/api/payments/orders/order_UPI1", headers=customer).json()["status"] == "created"
+    # captured with the right amount -> paid, membership granted exactly once
+    monkeypatch.setattr(payments, "order_payments", lambda oid: [{"id": "pay_u2", "status": "captured", "amount": 50000}])
+    for _ in range(2):
+        assert client.get("/api/payments/orders/order_UPI1", headers=customer).json()["status"] == "paid"
+    with SessionLocal() as db:
+        assert db.query(Membership).filter(Membership.payment_ref == "razorpay:pay_u2").count() == 1
+    # another user cannot probe someone else's order
+    assert client.get("/api/payments/orders/order_NOPE", headers=customer).status_code == 404

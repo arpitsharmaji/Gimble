@@ -1,3 +1,4 @@
+import { openManualPay } from './manualpay.js';
 import { html, raw, api, state, $, $$, openModal, closeModal, toast, actions, submits, formObj, inr, fmtD, photo, stars, isCustomer, requireLogin, busy, ago, openRazorpay } from './core.js';
 import { openAuth } from './auth.js';
 import { reportModal, blockUser } from './safety.js';
@@ -224,19 +225,22 @@ export function startBooking(p, activity) {
 export async function openMembership(onDone) {
   let info;
   try { info = await api('/membership/plans'); } catch (e) { toast(e.message, 'error'); return; }
+  let pending = false;
+  if (info.mode === 'manual') { try { pending = (await api('/membership/status')).pending_review; } catch { /* shown as not pending */ } }
   openModal(html`<span class="badge">UNLOCK BOOKINGS</span><h2>Make your next plan happen.</h2>
     <p class="muted">Browsing profiles and prices is always free. A membership lets you send booking requests.</p>
     <form data-submit="checkout" class="stack"><div class="plans">${info.plans.map((pl, i) => html`<label class="plan-opt"><input type="radio" name="plan" value="${pl.id}" ${i === 0 ? 'checked' : ''}><span><b>${pl.label}</b><strong>${inr(pl.amount)}</strong><small>${pl.days} days</small></span></label>`)}</div>
-    ${info.mode === 'unavailable' ? html`<p class="notice warn">Payments aren't switched on yet. Please check back soon.</p>` : html`<button class="btn primary block" type="submit">${info.mode === 'demo' ? 'Activate demo membership (no payment)' : 'Pay securely with Razorpay'}</button>`}
+    ${info.mode === 'unavailable' ? html`<p class="notice warn">Payments aren't switched on yet. Please check back soon.</p>` : pending ? html`<p class="notice info">Your payment proof is under review. We'll activate your membership as soon as it's verified.</p>` : html`<button class="btn primary block" type="submit">${info.mode === 'demo' ? 'Activate demo membership (no payment)' : info.mode === 'manual' ? 'Pay with UPI QR' : 'Pay securely with Razorpay'}</button>`}
     </form>
-    ${info.mode === 'demo' ? html`<p class="notice warn">Demo mode: no money is charged. Real checkout needs Razorpay keys (see README).</p>` : html`<p class="muted small">Payments are processed by Razorpay (UPI, cards, netbanking). Prices shown are proposed launch prices.</p>`}`, { label: 'Membership' });
-  $('#modal-root')._mem = { mode: info.mode, onDone };
+    ${info.mode === 'demo' ? html`<p class="notice warn">Demo mode: no money is charged. Real checkout needs Razorpay keys (see README).</p>` : info.mode === 'manual' ? html`<p class="muted small">Pay by scanning our UPI QR, then upload the payment screenshot. We verify it and activate your membership.</p>` : html`<p class="muted small">Payments are processed by Razorpay (UPI, cards, netbanking). Prices shown are proposed launch prices.</p>`}`, { label: 'Membership' });
+  $('#modal-root')._mem = { mode: info.mode, onDone, plans: info.plans };
 }
 submits.checkout = async f => {
-  const { mode, onDone } = $('#modal-root')._mem; const plan = formObj(f).plan;
+  const { mode, onDone, plans } = $('#modal-root')._mem; const plan = formObj(f).plan;
   const finish = () => { closeModal(); toast('Membership active - you can now send requests.', 'ok'); if (onDone) onDone(); };
+  if (mode === 'manual') { const pl = plans.find(x => x.id === plan); return openManualPay({ kind: 'membership', plan, amountInr: pl.amount, label: `${pl.label} membership · ${pl.days} days` }); }
   if (mode === 'demo') { await api('/membership/demo-activate', { method: 'POST', body: { plan } }); return finish(); }
   const co = await api('/membership/checkout', { method: 'POST', body: { plan } });
-  await openRazorpay(co, async resp => { await api('/payments/verify', { method: 'POST', body: resp }); finish(); });
+  await openRazorpay(co, async resp => { if (resp) await api('/payments/verify', { method: 'POST', body: resp }); finish(); });
 };
 actions['open-membership'] = () => login(() => { if (!isCustomer()) toast('Memberships are for customer accounts.', 'error'); else openMembership(); });

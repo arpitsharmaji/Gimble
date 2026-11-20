@@ -39,3 +39,12 @@ def refund(payment_id: str, amount_paise: int) -> dict:
                    json={"amount": amount_paise}, timeout=15)
     r.raise_for_status()
     return r.json()
+
+
+def order_payments(order_id: str) -> list[dict]:
+    """Payments attempted against an order. Used to reconcile when the browser never reported back
+    (typical for UPI: the customer leaves for GPay/PhonePe/Paytm and the tab is suspended)."""
+    r = httpx.get(f"{API}/orders/{order_id}/payments",
+                  auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET), timeout=15)
+    r.raise_for_status()
+    return r.json().get("items", [])

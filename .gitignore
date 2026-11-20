@@ -6,3 +6,22 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 backend/private/*
 !backend/private/.gitkeep
+
+# Environment and secrets
+.env.*
+!.env.example
+!.env.production.example
+
+# Python
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# Node dependencies
+node_modules/
+
+# IDE
+.vscode/
+.idea/

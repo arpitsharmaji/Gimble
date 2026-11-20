@@ -11,7 +11,7 @@ from .config import settings
 
 log = logging.getLogger("gimble.storage")
 NAME_RE = re.compile(r"^u(\d+)_[0-9a-f]{16}\.jpg$")        # public profile photos
-PRIVATE_RE = re.compile(r"^kyc_[0-9a-f]{24}\.jpg$")          # private ID files
+PRIVATE_RE = re.compile(r"^(kyc|pay)_[0-9a-f]{24}\.jpg$")    # private ID files + payment proofs
 
 
 class LocalStorage:

@@ -66,6 +66,12 @@ class Settings:
     RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
     RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
 
+    # Manual UPI QR payments (used when Razorpay is not configured): the customer scans your static QR, types the
+    # amount themselves, then uploads a screenshot + the UTR. An admin approves it in Admin -> Payments.
+    UPI_ID = os.getenv("UPI_ID", "").strip()                      # blank = manual UPI payments off
+    UPI_PAYEE_NAME = os.getenv("UPI_PAYEE_NAME", "Gimble").strip()
+    UPI_QR_URL = os.getenv("UPI_QR_URL", "/upi-qr.png").strip()    # replace frontend/upi-qr.png with YOUR QR image
+
     # Email. Without SMTP_HOST, emails are printed to the server log (dev only).
     SMTP_HOST = os.getenv("SMTP_HOST", "")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -83,7 +89,20 @@ class Settings:
 
     @property
     def booking_payments_on(self) -> bool:
-        return self.razorpay_enabled or self.DEMO_PAYMENTS_ENABLED
+        return self.razorpay_enabled or self.manual_upi_enabled or self.DEMO_PAYMENTS_ENABLED
+
+    @property
+    def manual_upi_enabled(self) -> bool:
+        return bool(self.UPI_ID)
+
+    @property
+    def payment_mode(self) -> str:
+        """razorpay > manual (UPI QR + admin approval) > demo (dev only) > unavailable."""
+        if self.razorpay_enabled:
+            return "razorpay"
+        if self.manual_upi_enabled:
+            return "manual"
+        return "demo" if self.DEMO_PAYMENTS_ENABLED else "unavailable"
 
     @property
     def razorpay_enabled(self) -> bool:
@@ -115,6 +134,8 @@ def validate_for_production() -> None:
         problems.append("ADMIN_PASSWORD must be changed (12+ characters)")
     if settings.DEMO_PAYMENTS_ENABLED:
         problems.append("DEMO_PAYMENTS_ENABLED must be false in production")
+    if settings.manual_upi_enabled and settings.UPI_ID.lower() == "yourname@okaxis":
+        problems.append("UPI_ID is still the example value - set your real UPI ID (and replace frontend/upi-qr.png with your QR)")
     if settings.SEED_DEMO:
         problems.append("SEED_DEMO must be false in production")
     if settings.uses_sqlite and not settings.ALLOW_SQLITE_IN_PRODUCTION:

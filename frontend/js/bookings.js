@@ -1,3 +1,4 @@
+import { openManualPay } from './manualpay.js';
 import { html, api, state, $, $$, openModal, closeModal, toast, actions, submits, formObj, inr, fmtDT, avatar, emptyState, askText, confirmBox, busy, timeUntil, downloadICS, mapsUrl, openRazorpay } from './core.js';
 import { reportModal, safetyModal } from './safety.js';
 import { confetti, haptic, reveal } from './fx.js';
@@ -19,12 +20,14 @@ const stepper = b => ['cancelled', 'rejected', 'expired'].includes(b.status)
   ? html`<div class="bk-dead">${b.status === 'cancelled' ? '✕ Cancelled' : b.status === 'rejected' ? '✕ Declined' : '⌛ Expired'}${b.status_reason ? html` · <span class="muted">${b.status_reason}</span>` : ''}</div>`
   : html`<ol class="stepper" aria-label="Booking progress">${STEPS.map((s, i) => html`<li class="${i < stepIndex(b) ? 'done' : i === stepIndex(b) ? 'now' : ''}"><i>${i < stepIndex(b) ? '✓' : i + 1}</i><span>${s}</span></li>`)}</ol>`;
 
+let reviewing = new Set();   // booking ids whose UPI payment proof is waiting for admin approval
 function payLine(b, isP) {
   if (b.payment_status === 'refunded') return html`<p class="bk-note ok">↩ Fully refunded (${inr(b.refund_amount)})</p>`;
   if (b.payment_status === 'partially_refunded') return html`<p class="bk-note warn">↩ Partly refunded (${inr(b.refund_amount)}) under the cancellation policy</p>`;
   if (b.payment_status === 'refund_pending') return html`<p class="bk-note warn">↩ Refund of ${inr(b.refund_amount)} is being processed</p>`;
   if (b.status === 'accepted' && b.payments_on) {
     if (b.payment_status === 'paid') return html`<p class="bk-note ok">🔒 Paid ${inr(b.paid_amount)} · held safely by Gimble until your plan is done${isP ? html` · you'll earn <b>${inr(b.partner_earning)}</b>` : ''}</p>`;
+    if (reviewing.has(b.id)) return isP ? html`<p class="bk-note warn">⏳ Customer's payment is being verified</p>` : html`<p class="bk-note warn">⏳ Payment proof submitted - we're verifying it. You'll be notified once your plan is confirmed.</p>`;
     return isP ? html`<p class="bk-note warn">⏳ Waiting for the customer to pay (they must pay by ${fmtDT(b.pay_deadline)})</p>`
       : html`<div class="paybox"><span>Pay <b>${inr(b.price)}</b> by ${fmtDT(b.pay_deadline)} to confirm this plan.</span><button class="btn primary sm" data-action="pay-booking" data-id="${b.id}">Pay ${inr(b.price)}</button></div>`;
   }
@@ -59,7 +62,7 @@ function card(b, isP) {
 export async function bookingsPage(root) {
   if (!state.me) return needLogin(root);
   root.innerHTML = '<div class="page"><h1>Bookings</h1><div class="skeleton"></div></div>';
-  try { rows = await api('/bookings'); } catch (e) { root.innerHTML = html`<div class="page"><p class="err">${e.message}</p></div>`.s; return; }
+  try { rows = await api('/bookings'); reviewing = await loadReviewing(); } catch (e) { root.innerHTML = html`<div class="page"><p class="err">${e.message}</p></div>`.s; return; }
   root._rows = rows; draw(root);
 }
 function draw(root = $('#view')) {
@@ -78,7 +81,8 @@ function draw(root = $('#view')) {
 }
 actions['bk-tab'] = el => { tab = el.dataset.tab; haptic(5); draw(); };
 const find = el => rows.find(b => b.id === Number(el.dataset.id));
-const reload = async () => { rows = await api('/bookings'); tab = null; draw(); };
+const loadReviewing = async () => { try { return new Set((await api('/payments/manual/mine')).filter(m => m.kind === 'booking' && m.status === 'pending').map(m => m.booking_id)); } catch { return new Set(); } };
+const reload = async () => { rows = await api('/bookings'); reviewing = await loadReviewing(); tab = null; draw(); };
 
 actions['bk-ics'] = el => { const b = find(el), isP = state.me.role === 'partner'; downloadICS(b, isP ? b.customer_name : b.partner_name); toast('Calendar file downloaded.', 'ok'); };
 actions['bk-again'] = async el => { try { const p = await api(`/partners/${el.dataset.id}`); startBooking(p, Object.keys(p.rates)[0]); } catch { toast('This partner isn\'t available right now.', 'error'); } };
@@ -86,8 +90,9 @@ actions['pay-booking'] = el => busy(el, async () => {
   const b = find(el);
   const co = await api(`/bookings/${b.id}/pay`, { method: 'POST' });
   const done = async () => { confetti(); haptic(30); toast('Payment confirmed - your plan is booked! 🎉', 'ok'); await reload(); };
+  if (co.mode === 'manual') return openManualPay({ kind: 'booking', bookingId: b.id, amountInr: b.price, label: `${b.activity} with ${b.partner_name}`, onDone: reload });
   if (co.mode === 'demo') { await api(`/bookings/${b.id}/demo-pay`, { method: 'POST' }); return done(); }
-  await openRazorpay(co, async resp => { await api('/payments/verify', { method: 'POST', body: resp }); await done(); });
+  await openRazorpay(co, async resp => { if (resp) await api('/payments/verify', { method: 'POST', body: resp }); await done(); });
 });
 actions.bk = async el => {
   const b = find(el), s = el.dataset.s; let reason = '';

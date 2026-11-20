@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..config import settings, PLANS
 from ..db import get_db
-from ..models import User, PaymentOrder
+from ..models import User, PaymentOrder, ManualPayment
 from ..schemas import CheckoutIn
 from ..security import current_user
 from .. import payments
@@ -21,13 +21,15 @@ def _require_customer(u: User):
 @router.get("/membership/plans")
 def plans():
     return {"plans": [{"id": k, **v} for k, v in PLANS.items()],
-            "mode": "razorpay" if settings.razorpay_enabled else ("demo" if settings.DEMO_PAYMENTS_ENABLED else "unavailable")}
+            "mode": settings.payment_mode}
 
 
 @router.get("/membership/status")
 def status(u: User = Depends(current_user), db: Session = Depends(get_db)):
     m = active_membership(db, u.id)
-    return {"active": bool(m), "plan": m.plan if m else None, "expires_at": m.expires_at.isoformat() + "Z" if m else None}
+    pending = db.query(ManualPayment).filter_by(user_id=u.id, kind="membership", status="pending").first() is not None
+    return {"active": bool(m), "plan": m.plan if m else None, "expires_at": m.expires_at.isoformat() + "Z" if m else None,
+            "pending_review": pending}
 
 
 @router.post("/membership/checkout")
@@ -48,6 +50,8 @@ def checkout(x: CheckoutIn, u: User = Depends(current_user), db: Session = Depen
         return {"mode": "razorpay", "key_id": settings.RAZORPAY_KEY_ID, "order_id": order["id"],
                 "amount": amount_paise, "currency": "INR", "name": "Gimble", "description": f"{PLANS[x.plan]['label']} membership",
                 "prefill": {"name": u.name, "email": u.email}}
+    if settings.manual_upi_enabled:
+        return {"mode": "manual", "amount": amount_paise}
     if settings.DEMO_PAYMENTS_ENABLED:
         return {"mode": "demo", "amount": amount_paise}
     raise HTTPException(503, "Payments are not configured yet")
@@ -57,7 +61,7 @@ def checkout(x: CheckoutIn, u: User = Depends(current_user), db: Session = Depen
 def demo_activate(x: CheckoutIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
     """Development-only entitlement switch. Collects NO money. Disabled in production."""
     _require_customer(u)
-    if not settings.DEMO_PAYMENTS_ENABLED or settings.razorpay_enabled and settings.is_production:
+    if not settings.DEMO_PAYMENTS_ENABLED or settings.manual_upi_enabled or settings.razorpay_enabled and settings.is_production:
         raise HTTPException(404, "Demo membership is disabled")
     if x.plan not in PLANS:
         raise HTTPException(400, "Invalid plan")

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..config import settings
 from ..models import (User, PartnerProfile, Booking, Membership, Report, AuditLog, Review, PayoutRequest,
-                      KycSubmission, SupportTicket, LedgerEntry, utcnow)
+                      KycSubmission, SupportTicket, LedgerEntry, ManualPayment, utcnow)
 from ..schemas import (AdminGrantIn, AdminPartnerDecisionIn, AdminVerifyIn, AdminSuspendIn, AdminResolveIn, AdminPayoutIn, AdminAdjustIn)
 from ..security import admin_user
 from ..services import (partner_json, booking_json, notify, audit, cancel_booking, credit, _do_refund, grant_membership, active_membership)
@@ -31,6 +31,7 @@ def overview(a: User = Depends(admin_user), db: Session = Depends(get_db)):
         "pending_payouts": q(PayoutRequest).filter_by(status="requested").count(),
         "pending_payout_inr": q(func.coalesce(func.sum(PayoutRequest.amount), 0)).filter(PayoutRequest.status == "requested").scalar(),
         "pending_kyc": q(KycSubmission).filter_by(status="pending").count(),
+        "pending_manual_payments": q(ManualPayment).filter_by(status="pending").count(),
         "open_tickets": q(SupportTicket).filter_by(status="open").count(),
         "refund_pending": q(Booking).filter_by(payment_status="refund_pending").count(),
         "open_reports": q(Report).filter_by(status="open").count(),
@@ -146,7 +147,8 @@ def resolve_report(report_id: int, x: AdminResolveIn, a: User = Depends(admin_us
 
 @router.get("/bookings")
 def bookings(a: User = Depends(admin_user), db: Session = Depends(get_db)):
-    return [booking_json(b, db) for b in db.query(Booking).order_by(Booking.id.desc()).limit(200).all()]
+    return [{**booking_json(b, db), "payment_ref_manual": (b.payment_id or "").startswith("UPI:")}
+            for b in db.query(Booking).order_by(Booking.id.desc()).limit(200).all()]
 
 
 @router.get("/audit")
@@ -197,6 +199,8 @@ def retry_refund(booking_id: int, a: User = Depends(admin_user), db: Session = D
     b = db.get(Booking, booking_id)
     if not b or b.payment_status != "refund_pending":
         raise HTTPException(400, "This booking has no pending refund")
+    if b.payment_id.startswith("UPI:"):
+        raise HTTPException(400, "This was paid by manual UPI: send the refund yourself, then click 'Mark refunded'")
     amount = b.refund_amount
     b.payment_status = "paid"
     _do_refund(db, b, amount)
