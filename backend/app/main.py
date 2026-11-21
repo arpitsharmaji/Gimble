@@ -7,7 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from .config import settings, validate_for_production
 from .db import Base, engine, SessionLocal
-from .routers import auth, partners, bookings, social, membership, admin, payments, wallet, kyc, support, home, manual_payments
+from .routers import auth, partners, bookings, social, membership, admin, payments, wallet, kyc, support, home, manual_payments, customer, discover
+from . import seo
 from .migrate import ensure_columns
 from .seed import seed
 from .storage import get_storage, NAME_RE
@@ -58,13 +59,16 @@ app = FastAPI(title="Gimble API", version="3.0.0", lifespan=lifespan,
               docs_url=None if settings.is_production else "/docs",
               redoc_url=None, openapi_url=None if settings.is_production else "/openapi.json")
 
-for r in (auth, partners, bookings, social, membership, payments, manual_payments, wallet, kyc, support, home, admin):
+for r in (auth, partners, bookings, social, membership, payments, manual_payments, customer, discover, wallet, kyc, support, home, admin):
     app.include_router(r.router)
+app.include_router(seo.router)   # public SEO pages, robots.txt, sitemap.xml (must come before the static mount)
 
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     resp = await call_next(request)
+    if request.url.path.startswith(("/api/", "/uploads/")) or request.url.path == "/upi-qr.png":
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow"   # keep private data, photos and the payment QR out of search
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("X-Frame-Options", "DENY")
     resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")

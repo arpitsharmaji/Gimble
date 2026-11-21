@@ -25,6 +25,7 @@ class User(Base):
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     partner: Mapped["PartnerProfile"] = relationship(back_populates="user", uselist=False)
+    customer: Mapped["CustomerProfile"] = relationship(back_populates="user", uselist=False)
 
 
 class PartnerProfile(Base):
@@ -50,6 +51,31 @@ class PartnerProfile(Base):
     payout_upi: Mapped[str] = mapped_column(String(80), default="")
     payout_name: Mapped[str] = mapped_column(String(80), default="")
     user: Mapped[User] = relationship(back_populates="partner")
+
+
+class CustomerProfile(Base):
+    """The 'hire' side of an account: photos + a short bio. No rates. Shown to approved partners only after admin approval."""
+    __tablename__ = "customer_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    bio: Mapped[str] = mapped_column(Text, default="")
+    photos_json: Mapped[str] = mapped_column(Text, default="[]")
+    discoverable: Mapped[bool] = mapped_column(Boolean, default=True)   # customer's choice: appear in partners' swipe deck
+    status: Mapped[str] = mapped_column(String(16), default="draft", index=True)  # draft -> pending -> approved | rejected
+    reject_reason: Mapped[str] = mapped_column(String(300), default="")
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    user: Mapped[User] = relationship(back_populates="customer")
+
+
+class Swipe(Base):
+    """A partner's decision on a customer profile: right = sent the free intro message, left = passed."""
+    __tablename__ = "swipes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    partner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    direction: Mapped[str] = mapped_column(String(5))                    # left|right
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    __table_args__ = (UniqueConstraint("partner_id", "customer_id"),)
 
 
 class Membership(Base):

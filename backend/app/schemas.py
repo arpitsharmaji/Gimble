@@ -190,3 +190,18 @@ class AdminAdjustIn(BaseModel):
 class AdminGrantIn(BaseModel):
     plan: str = "monthly"
     note: str = Field(default="", max_length=120)
+
+
+class CustomerProfileIn(BaseModel):
+    bio: str = Field(default="", max_length=500)
+    photos: list[str] = Field(default_factory=list, max_length=6)
+    discoverable: bool = True
+
+
+class SwitchModeIn(BaseModel):
+    mode: str            # hire | hired
+
+
+class SwipeIn(BaseModel):
+    customer_id: int
+    direction: str       # left | right

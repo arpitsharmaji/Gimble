@@ -31,7 +31,7 @@ export function mountDeck(host, opts) {
   host.innerHTML = '<div class="deck-stack" role="group" aria-label="Profiles to swipe"></div>';
   const stack = host.firstElementChild;
 
-  const make = i => { const p = opts.items[i]; if (!p) return null; const w = document.createElement('div'); w.innerHTML = cardHTML(p).s; const c = w.firstElementChild; c._i = i; c._photo = 0; return c; };
+  const make = i => { const p = opts.items[i]; if (!p) return null; const w = document.createElement('div'); w.innerHTML = (opts.card || cardHTML)(p).s; const c = w.firstElementChild; c._i = i; c._photo = 0; return c; };
   const place = (n, k, animate = true) => {
     n.style.transition = animate ? 'transform .34s cubic-bezier(.2,.8,.2,1), opacity .3s' : 'none';
     n.style.zIndex = String(10 - k); n.classList.toggle('top', k === 0);

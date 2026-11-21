@@ -5,6 +5,7 @@ import { reportModal, blockUser } from './safety.js';
 import { mountDeck } from './deck.js';
 import { isMobile, burst, haptic, reveal } from './fx.js';
 import { bookingWizard } from './booking.js';
+import { customerDeckPage, leaveCustomerDeck } from './swipe.js';
 
 const login = fn => requireLogin(fn, openAuth);
 const DEFAULT_F = { q: '', city: '', activity: '', max_price: '', min_rating: '', gender: '', sort: 'relevance', available: false };
@@ -17,6 +18,7 @@ let items = [], total = 0, loading = false, deckCtl = null, deckIdx = 0, rootEl 
 const activeFilterCount = () => ['city', 'max_price', 'min_rating', 'gender'].filter(k => F[k]).length + (F.available ? 1 : 0);
 
 function cleanup() {
+  leaveCustomerDeck();
   if (deckCtl) { deckCtl.destroy(); deckCtl = null; }
   if (sentinelIO) { sentinelIO.disconnect(); sentinelIO = null; }
   document.body.classList.remove('deck-mode');
@@ -25,6 +27,7 @@ export { cleanup as leaveBrowse };
 
 // ====================== BROWSE ======================
 export async function discoverPage(root, params) {
+  if (state.me && state.me.role === 'partner') return customerDeckPage(root);   // partners see customers, never other partners
   cleanup(); rootEl = root;
   if (params && [...params.keys()].length) { Object.assign(F, DEFAULT_F); for (const k of ['q', 'city', 'activity', 'max_price', 'min_rating', 'gender', 'sort']) if (params.get(k)) F[k] = params.get(k); deckIdx = 0; }
   const acts = (state.meta && state.meta.activity_suggestions) || [];

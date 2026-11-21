@@ -4,9 +4,11 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..config import settings
 from ..models import (User, PartnerProfile, Booking, Membership, Report, AuditLog, Review, PayoutRequest,
-                      KycSubmission, SupportTicket, LedgerEntry, ManualPayment, utcnow)
+                      KycSubmission, SupportTicket, LedgerEntry, ManualPayment, CustomerProfile, utcnow)
 from ..schemas import (AdminGrantIn, AdminPartnerDecisionIn, AdminVerifyIn, AdminSuspendIn, AdminResolveIn, AdminPayoutIn, AdminAdjustIn)
-from ..security import admin_user
+import json
+from ..security import admin_user, age_from
+from ..storage import media_url
 from ..services import (partner_json, booking_json, notify, audit, cancel_booking, credit, _do_refund, grant_membership, active_membership)
 from ..config import PLANS
 
@@ -32,6 +34,7 @@ def overview(a: User = Depends(admin_user), db: Session = Depends(get_db)):
         "pending_payout_inr": q(func.coalesce(func.sum(PayoutRequest.amount), 0)).filter(PayoutRequest.status == "requested").scalar(),
         "pending_kyc": q(KycSubmission).filter_by(status="pending").count(),
         "pending_manual_payments": q(ManualPayment).filter_by(status="pending").count(),
+        "pending_customer_profiles": q(CustomerProfile).filter_by(status="pending").count(),
         "open_tickets": q(SupportTicket).filter_by(status="open").count(),
         "refund_pending": q(Booking).filter_by(payment_status="refund_pending").count(),
         "open_reports": q(Report).filter_by(status="open").count(),
@@ -63,6 +66,34 @@ def review_partner(partner_id: int, x: AdminPartnerDecisionIn, a: User = Depends
     audit(db, a.id, "partner_approved" if x.approved else "partner_rejected", f"user:{partner_id}", x.reason)
     db.commit()
     return {"status": p.status}
+
+
+@router.get("/customer-profiles")
+def customer_profiles(status: str = "pending", a: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Customer ('hire' side) profiles waiting for review before partners can see them."""
+    qs = db.query(CustomerProfile, User).join(User, User.id == CustomerProfile.user_id)
+    if status != "all":
+        qs = qs.filter(CustomerProfile.status == status)
+    return [{"id": u.id, "name": u.name, "email": u.email, "age": age_from(u.dob), "city": u.city, "bio": c.bio,
+             "photos": [media_url(x) for x in json.loads(c.photos_json or "[]")], "discoverable": c.discoverable,
+             "submitted_at": c.submitted_at.isoformat() + "Z" if c.submitted_at else None}
+            for c, u in qs.order_by(CustomerProfile.submitted_at.asc()).limit(200).all()]
+
+
+@router.patch("/customer-profiles/{user_id}")
+def review_customer_profile(user_id: int, x: AdminPartnerDecisionIn, a: User = Depends(admin_user), db: Session = Depends(get_db)):
+    c = db.query(CustomerProfile).filter_by(user_id=user_id).first()
+    if not c:
+        raise HTTPException(404, "Customer profile not found")
+    if not x.approved and not x.reason.strip():
+        raise HTTPException(400, "Give a reason so the member can fix their profile")
+    c.status = "approved" if x.approved else "rejected"
+    c.reject_reason = "" if x.approved else x.reason.strip()
+    notify(db, user_id, "profile", "Your profile is approved. Partners can now see it." if x.approved
+           else f"Your profile needs changes: {x.reason.strip()}", "#/account")
+    audit(db, a.id, "customer_profile_approved" if x.approved else "customer_profile_rejected", f"user:{user_id}", x.reason)
+    db.commit()
+    return {"status": c.status}
 
 
 @router.patch("/partners/{partner_id}/verified")

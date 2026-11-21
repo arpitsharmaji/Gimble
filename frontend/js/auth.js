@@ -28,8 +28,8 @@ function openRegister(heading) {
     <h2>${heading || 'Create your account'}</h2>
     <form data-submit="register" class="stack">
       <div class="role-cards" role="radiogroup" aria-label="Account type">
-        <label><input type="radio" name="role" value="customer" checked><span><b>🔍 Book companions</b><small>Browse &amp; plan meet-ups</small></span></label>
-        <label><input type="radio" name="role" value="partner"><span><b>🌟 Become a partner</b><small>Earn on your schedule</small></span></label>
+        <label><input type="radio" name="role" value="customer" checked><span><b>🔍 Hire</b><small>Find a companion</small></span></label>
+        <label><input type="radio" name="role" value="partner"><span><b>🌟 Get hired</b><small>Become a partner</small></span></label>
       </div>
       <label class="lbl" for="r-name">Full name</label><input class="field" id="r-name" name="name" required minlength="2" maxlength="80" autocomplete="name">
       <label class="lbl" for="r-email">Email</label><input class="field" id="r-email" name="email" type="email" required autocomplete="email">
@@ -57,12 +57,39 @@ function afterLogin(data) {
   closeModal();
   toast(`Welcome${data.user.name ? ', ' + data.user.name.split(' ')[0] : ''}!`, 'ok');
   const next = state.after; state.after = null;
-  refreshMe().then(() => {
-    if (next) next();
-    else if (data.user.role === 'partner' && !data.__existing) location.hash = '#/dashboard';
-    else if (data.user.role === 'admin') location.hash = '#/admin';
+  refreshMe().then(async () => {
+    if (data.user.role === 'admin') { location.hash = '#/admin'; return; }
+    if (next) {                                   // the person was mid-action (save / book / message): that's a Hire action
+      if (state.me.role === 'partner') { try { const r = await api('/auth/switch-mode', { method: 'POST', body: { mode: 'hire' } }); setAuth({ access_token: state.token, user: r.user }); } catch { /* keep going */ } }
+      next(); return;
+    }
+    if (data.__existing) openModePicker();        // every login: choose Hire or Get hired
+    else location.hash = data.user.role === 'partner' ? '#/dashboard' : '#/setup';   // new account: finish the profile first
   });
 }
+
+/** Hire (find a companion) or Get hired (become a partner): one account, two sides. */
+export function openModePicker() {
+  const me = state.me; if (!me || me.role === 'admin') return;
+  const m = me.modes || {};
+  const hint = (k) => !m[k] || !m[k].complete ? 'Set up your profile' : m[k].status === 'pending' ? 'Profile under review' : 'Ready';
+  openModal(html`<div class="m-top">${logoHead}</div><h2>What would you like to do?</h2><p class="muted nom">You can switch any time from the top bar.</p>
+    <div class="mode-cards">
+      <button type="button" class="mode-card ${me.role === 'customer' ? 'on' : ''}" data-action="pick-mode" data-mode="hire"><span class="mc-ico">🔍</span><b>Hire</b><small>Find a companion for coffee, films, events and more</small><em>${hint('hire')}</em></button>
+      <button type="button" class="mode-card ${me.role === 'partner' ? 'on' : ''}" data-action="pick-mode" data-mode="hired"><span class="mc-ico">🌟</span><b>Get hired</b><small>Become a partner and meet customers who want company</small><em>${hint('hired')}</em></button>
+    </div>`, { label: 'Choose a mode' });
+}
+async function goMode(mode) {
+  const need = mode === 'hired' ? 'partner' : 'customer';
+  try {
+    if (state.me.role !== need) { const r = await api('/auth/switch-mode', { method: 'POST', body: { mode } }); setAuth({ access_token: state.token, user: r.user }); }
+    closeModal();
+    const m = state.me.modes;
+    location.hash = mode === 'hire' ? (m.hire.complete ? '#/browse' : '#/setup') : (m.hired.complete ? '#/browse' : '#/dashboard');
+  } catch (e) { toast(e.message, 'error'); }
+}
+actions['switch-mode'] = () => openModePicker();
+actions['pick-mode'] = el => goMode(el.dataset.mode);
 
 actions['auth-login'] = () => openAuth('login');
 actions['auth-register'] = () => openAuth('register');

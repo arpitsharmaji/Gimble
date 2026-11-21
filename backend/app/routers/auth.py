@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..mailer import send_email
-from ..models import User, PartnerProfile, AuthToken, Booking, utcnow
+from ..models import User, PartnerProfile, CustomerProfile, AuthToken, Booking, utcnow
 from ..schemas import (RegisterIn, LoginIn, ForgotIn, ResetIn, TokenIn, ChangePasswordIn, DeleteAccountIn)
 from ..security import (hash_password, verify_password, create_token, current_user, password_problem,
                         sha256, age_from, rate_limit)
@@ -53,6 +53,8 @@ def register(x: RegisterIn, db: Session = Depends(get_db)):
     db.flush()
     if x.role == "partner":
         db.add(PartnerProfile(user_id=u.id))
+    else:
+        db.add(CustomerProfile(user_id=u.id))
     link = _send_verify(db, u)
     db.commit()
     out = {"access_token": create_token(u.id), "token_type": "bearer", "user": user_json(u)}
@@ -163,6 +165,8 @@ def delete_account(x: DeleteAccountIn, u: User = Depends(current_user), db: Sess
         u.partner.available = False
         u.partner.bio = u.partner.headline = ""
         u.partner.photos_json = "[]"
+    if u.customer:
+        u.customer.status, u.customer.bio, u.customer.photos_json, u.customer.discoverable = "draft", "", "[]", False
     audit(db, u.id, "account_deleted", f"user:{u.id}")
     db.commit()
     return {"message": "Account deleted"}

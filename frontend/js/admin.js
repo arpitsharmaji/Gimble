@@ -16,7 +16,7 @@ async function draw() {
   try {
     const s = await api('/admin/overview');
     const set = (k, n) => { const e = $('#n-' + k); if (e) e.textContent = n ? ` ${n}` : ''; };
-    set('approvals', s.pending_partners); set('reports', s.open_reports); set('kyc', s.pending_kyc); set('payments', s.pending_manual_payments); set('payouts', s.pending_payouts); set('support', s.open_tickets);
+    set('approvals', s.pending_partners + (s.pending_customer_profiles || 0)); set('reports', s.open_reports); set('kyc', s.pending_kyc); set('payments', s.pending_manual_payments); set('payouts', s.pending_payouts); set('support', s.open_tickets);
     if (tab === 'overview') body.innerHTML = html`<div class="stats">${[['Users', s.users], ['Customers', s.customers], ['Live partners', s.live_partners], ['Pending approvals', s.pending_partners], ['Active memberships', s.active_memberships], ['Bookings', s.bookings], ['Completed', s.completed_bookings], ['Booked value', inr(s.gross_completed_inr)], ['Open reports', s.open_reports], ['Critical reports', s.critical_reports], ['Customer money held/paid (net)', inr(s.paid_in_inr)], ['Gimble fees (completed)', inr(s.platform_fees_inr)], ['Payouts waiting', `${s.pending_payouts} (${inr(s.pending_payout_inr)})`], ['ID checks waiting', s.pending_kyc], ['Open support tickets', s.open_tickets], ['Refunds to retry', s.refund_pending]].map(([l, v]) => html`<div class="${l === 'Critical reports' && v ? 'alert' : ''}"><b>${v}</b><span>${l}</span></div>`)}</div>`.s;
     if (tab === 'approvals') await approvals(body);
     if (tab === 'payments') await paymentsTab(body);
@@ -32,12 +32,19 @@ async function draw() {
 
 async function approvals(body) {
   const rows = await api('/admin/partners?status=pending');
-  body.innerHTML = rows.length ? rows.map(p => html`<div class="item review-card"><div class="rc-photo">${photo(p)}</div><div class="grow"><div class="between"><b>${p.name}, ${p.age} <small class="muted">${p.email}</small></b><span class="muted small">${p.submitted_at ? ago(p.submitted_at) : ''}</span></div>
+  const custs = await api('/admin/customer-profiles?status=pending');
+  const custHtml = custs.length ? html`<h3>Customer profiles (shown to partners once approved)</h3>${custs.map(c => html`<div class="item review-card"><div class="rc-photo">${c.photos.length ? html`<img src="${c.photos[0]}" alt="">` : ''}</div><div class="grow"><div class="between"><b><span class="pill requested">Customer profile</span> ${c.name}, ${c.age} <small class="muted">${c.email}</small></b><span class="muted small">${c.submitted_at ? ago(c.submitted_at) : ''}</span></div>
+    <p class="muted small">${c.city} · ${c.discoverable ? 'visible to partners' : 'opted out of partner discovery'}</p><p>${c.bio}</p>
+    ${c.photos.length > 1 ? html`<div class="thumbs">${c.photos.map(u => html`<img src="${u}" alt="">`)}</div>` : ''}
+    <div class="row wrap"><button class="btn primary sm" data-action="cp-yes" data-id="${c.id}">Approve</button><button class="btn danger sm" data-action="cp-no" data-id="${c.id}">Reject…</button></div></div></div>`)}`.s : '';
+  body.innerHTML = custHtml + (rows.length ? '<h3>Partner profiles</h3>' : '') + (rows.length ? rows.map(p => html`<div class="item review-card"><div class="rc-photo">${photo(p)}</div><div class="grow"><div class="between"><b>${p.name}, ${p.age} <small class="muted">${p.email}</small></b><span class="muted small">${p.submitted_at ? ago(p.submitted_at) : ''}</span></div>
     <p class="muted small">${p.city} · ${p.gender || 'gender not set'}</p><p class="headline">${p.headline}</p><p>${p.bio}</p>
     ${p.photos.length > 1 ? html`<div class="thumbs">${p.photos.map(u => html`<img src="${u}" alt="">`)}</div>` : ''}
     <div class="tags">${Object.entries(p.rates).map(([a, v]) => html`<span>${a} ${inr(v)}</span>`)}</div>
-    <div class="row wrap"><button class="btn primary sm" data-action="ap-yes" data-id="${p.id}">Approve</button><button class="btn danger sm" data-action="ap-no" data-id="${p.id}">Reject…</button></div></div></div>`).join('') : '<div class="empty"><p>No profiles waiting for review 🎉</p></div>';
+    <div class="row wrap"><button class="btn primary sm" data-action="ap-yes" data-id="${p.id}">Approve</button><button class="btn danger sm" data-action="ap-no" data-id="${p.id}">Reject…</button></div></div></div>`).join('') : (custs.length ? '' : '<div class="empty"><p>No profiles waiting for review 🎉</p></div>'));
 }
+actions['cp-yes'] = el => busy(el, async () => { await api(`/admin/customer-profiles/${el.dataset.id}`, { method: 'PATCH', body: { approved: true } }); toast('Approved.', 'ok'); draw(); });
+actions['cp-no'] = async el => { const r = await askText({ title: 'Reject customer profile', label: 'Reason (shown to the member)', required: true, confirm: 'Reject', danger: true, placeholder: 'e.g. Please use a clear photo of your face' }); if (r === null) return; await api(`/admin/customer-profiles/${el.dataset.id}`, { method: 'PATCH', body: { approved: false, reason: r } }); toast('Rejected.', 'ok'); draw(); };
 actions['ap-yes'] = el => busy(el, async () => { await api(`/admin/partners/${el.dataset.id}`, { method: 'PATCH', body: { approved: true } }); toast('Approved.', 'ok'); draw(); });
 actions['ap-no'] = async el => { const r = await askText({ title: 'Reject profile', label: 'Reason (shown to the partner)', required: true, confirm: 'Reject', danger: true, placeholder: 'e.g. Please use a clear photo of your face' }); if (r === null) return; await api(`/admin/partners/${el.dataset.id}`, { method: 'PATCH', body: { approved: false, reason: r } }); toast('Rejected.', 'ok'); draw(); };
 

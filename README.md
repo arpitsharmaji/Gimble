@@ -51,3 +51,26 @@ Used automatically when Razorpay keys are blank and `UPI_ID` is set (Razorpay st
 4. Refunds for manually paid bookings wait in the admin Bookings tab as `refund_pending`: send the UPI refund yourself, then click **Mark refunded** and enter its UTR.
 
 Safeguards: the amount is set by the server, UTRs and identical screenshots can't be reused, only admins can see proofs, and a booking isn't auto-cancelled while its proof awaits review.
+
+## SEO
+
+The app is a single-page app on `#/` routes, which search engines can't index as separate pages, so the public site has **server-rendered SEO pages** (`backend/app/seo.py`, copy in `backend/app/seo_content.py`):
+
+- `/hire-a-companion`, `/rent-a-friend`, `/partner-on-rent` (girlfriend / boyfriend / partner on rent: an honest explainer), `/blind-date-alternative`, `/event-plus-one`, `/meet-new-people`, `/safe-meeting-tips`, `/faq`, `/guides`, and `/companions/<city>`.
+- Each has its own title, description, canonical URL, Open Graph tags and JSON-LD (Organization, FAQPage, BreadcrumbList). `robots.txt` and `sitemap.xml` are generated.
+- API, photos and the payment QR are `noindex`; individual partner profiles are intentionally **not** public.
+
+To go live: set `PUBLIC_URL=https://your-domain` (required in production), set `SEO_CITIES` to cities where you really have partners, then add the site in **Google Search Console** and submit `https://your-domain/sitemap.xml`. Rankings take weeks to months and depend on content and backlinks.
+
+Copy rules: keep pages truthful and matching your Terms (friendly, public, non-sexual). Don't add keyword stuffing, hidden text, fake reviews or "money dating" / adult-service terms: search engines penalise them and payment providers look at how a site describes itself.
+
+
+## Hire / Get hired (one account, two sides)
+
+- **Signup:** choose *Hire* (find a companion) or *Get hired* (become a partner). Both sides need **photos + a bio**; only partners set rates. Customers finish a short profile on `#/setup` before using the app; partners use the dashboard as before.
+- **Every login** shows two options, **Hire** and **Get hired**. You can switch any time from the top bar (`Hiring ⇄` / `Getting hired ⇄`) or Account. Switching only changes the active mode; both profiles are kept. A mode you haven't set up yet starts its own onboarding.
+- **Visibility:** in Hire mode you see only partner profiles; in Get hired mode you see only customer profiles (`#/browse` becomes the swipe deck, and browsing other partners is blocked by the API).
+- **Partner swipe deck:** left = pass, right = a free fixed intro message is sent: *"Hi <name>! I'm <partner> and I'm interested in being your partner. Hire me and let's explore!"*
+- **Customer profiles are admin-approved** (Admin -> Approvals) before partners can see them, and customers can opt out of discovery on `#/setup`.
+
+Safeguards on intros: only approved, available partners can swipe; the message is a server template (no free text, so no phone numbers or links); a daily cap (`INTRO_DAILY_CAP`, default 25); partners can't message again until the customer replies; customers can reply, block or report; only first name, age, city, bio and photos are shown to partners.

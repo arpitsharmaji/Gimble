@@ -32,9 +32,26 @@ def audit(db: Session, actor_id: int | None, action: str, target: str = "", deta
     db.add(AuditLog(actor_id=actor_id, action=action, target=target[:60], detail=detail[:400]))
 
 
+CUSTOMER_BIO_MIN = 20
+
+
+def customer_complete(c) -> bool:
+    return bool(c and len((c.bio or "").strip()) >= CUSTOMER_BIO_MIN and json.loads(c.photos_json or "[]"))
+
+
+def modes_json(u: User) -> dict | None:
+    """Which sides of the account exist / are set up. 'hire' = find a companion, 'hired' = become a partner."""
+    if u.role == "admin":
+        return None
+    c, p = u.customer, u.partner
+    return {"active": "hired" if u.role == "partner" else "hire",
+            "hire": {"exists": bool(c), "complete": customer_complete(c), "status": c.status if c else "none"},
+            "hired": {"exists": bool(p), "complete": bool(p and p.status in ("pending", "approved")), "status": p.status if p else "none"}}
+
+
 def user_json(u: User) -> dict:
     return {"id": u.id, "name": u.name, "email": u.email, "age": age_from(u.dob), "city": u.city,
-            "gender": u.gender, "role": u.role, "email_verified": u.email_verified}
+            "gender": u.gender, "role": u.role, "email_verified": u.email_verified, "modes": modes_json(u)}
 
 
 def partner_json(p: PartnerProfile, own: bool = False) -> dict:

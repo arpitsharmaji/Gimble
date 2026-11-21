@@ -66,6 +66,12 @@ class Settings:
     RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
     RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
 
+    # Partners' daily cap on free intro messages sent by swiping right (spam protection)
+    INTRO_DAILY_CAP = int(os.getenv("INTRO_DAILY_CAP", "25"))
+
+    # SEO: cities that get a /companions/<city> page. Only list cities where you actually have partners.
+    SEO_CITIES = os.getenv("SEO_CITIES", "")                       # comma list of slugs; blank = all built-in cities
+
     # Manual UPI QR payments (used when Razorpay is not configured): the customer scans your static QR, types the
     # amount themselves, then uploads a screenshot + the UTR. An admin approves it in Admin -> Payments.
     UPI_ID = os.getenv("UPI_ID", "").strip()                      # blank = manual UPI payments off
@@ -134,6 +140,8 @@ def validate_for_production() -> None:
         problems.append("ADMIN_PASSWORD must be changed (12+ characters)")
     if settings.DEMO_PAYMENTS_ENABLED:
         problems.append("DEMO_PAYMENTS_ENABLED must be false in production")
+    if not settings.PUBLIC_URL.startswith("https://") or "localhost" in settings.PUBLIC_URL:
+        problems.append("PUBLIC_URL must be your real https:// address: it is used in the sitemap, canonical tags and email links")
     if settings.manual_upi_enabled and settings.UPI_ID.lower() == "yourname@okaxis":
         problems.append("UPI_ID is still the example value - set your real UPI ID (and replace frontend/upi-qr.png with your QR)")
     if settings.SEED_DEMO:

@@ -1,6 +1,7 @@
 import { reveal } from './fx.js';
 import { html, raw, $, $$, api, state, on, actions, closeModal, toast, refreshMe, modalOpen } from './core.js';
-import { openAuth, verifyPage, resetPage } from './auth.js';
+import { openAuth, verifyPage, resetPage, openModePicker } from './auth.js';
+import { setupPage } from './setup.js';
 import { discoverPage, profilePage, leaveBrowse } from './discover.js';
 import { savedPage, dashboardPage, accountPage, stopTimers, timers, pollNotifications, renderBadges } from './account.js';
 import { bookingsPage } from './bookings.js';
@@ -18,15 +19,17 @@ function freshView() { const next = document.createElement('main'); next.id = 'v
 
 function renderHeader() {
   const me = state.me;
-  const links = [['browse', 'Browse'], ['saved', 'Saved'], ['messages', 'Messages'], ['bookings', 'Bookings']];
-  if (me && me.role === 'partner') links.push(['dashboard', 'Dashboard'], ['earnings', 'Earnings']);
-  if (!me || me.role !== 'partner') links.push(['become-a-partner', 'Become a partner']);
+  const partnerMode = me && me.role === 'partner';
+  const links = partnerMode ? [['browse', 'Discover'], ['messages', 'Messages'], ['bookings', 'Bookings'], ['dashboard', 'Dashboard'], ['earnings', 'Earnings']]
+    : [['browse', 'Browse'], ['saved', 'Saved'], ['messages', 'Messages'], ['bookings', 'Bookings']];
+  if (!me) links.push(['become-a-partner', 'Become a partner']);
   if (me && me.role === 'admin') links.push(['admin', 'Admin']);
   $('#topbar').innerHTML = html`<a class="brand" href="#/" aria-label="Gimble home"><img class="brand-logo" src="/logo-sm.png" alt="" width="40" height="33"><span>gimble</span></a>
     <nav class="top-nav" aria-label="Main">${links.map(([p, l]) => html`<a href="#/${p}" data-nav="${p}">${l}${p === 'messages' ? html`<span class="badge-n" id="msg-badge" hidden></span>` : ''}</a>`)}</nav>
     <div class="top-actions"><button class="icon-btn" data-action="bell" aria-label="Notifications">🔔<span class="badge-n" id="bell-badge" hidden></span></button>
+    ${me && me.role !== 'admin' ? html`<button class="mode-pill" data-action="switch-mode" title="Switch between Hire and Get hired">${partnerMode ? '🌟 Getting hired' : '🔍 Hiring'} ⇄</button>` : ''}
     ${me ? html`<a class="avatar" href="#/account" aria-label="Account">${(me.name || 'A')[0].toUpperCase()}</a>` : html`<button class="btn primary sm" data-action="auth-login">Log in</button><button class="btn ghost sm hide-sm" data-action="auth-register">Sign up</button>`}</div>`.s;
-  $('#bottomnav').innerHTML = html`${[['', '⌂', 'Home'], ['browse', '⌕', 'Browse'], ['messages', '▤', 'Chats'], ['bookings', '▣', 'Bookings'], [me ? 'account' : 'login', '○', me ? 'Account' : 'Log in']].map(([p, i, l]) => html`<a href="#/${p === 'login' ? '' : p}" data-nav="${p}" ${p === 'login' ? raw('data-action="auth-login"') : ''}><span>${i}</span>${l}</a>`)}`.s;
+  $('#bottomnav').innerHTML = html`${[['', '⌂', 'Home'], ['browse', '⌕', me && me.role === 'partner' ? 'Discover' : 'Browse'], ['messages', '▤', 'Chats'], ['bookings', '▣', 'Bookings'], [me ? 'account' : 'login', '○', me ? 'Account' : 'Log in']].map(([p, i, l]) => html`<a href="#/${p === 'login' ? '' : p}" data-nav="${p}" ${p === 'login' ? raw('data-action="auth-login"') : ''}><span>${i}</span>${l}</a>`)}`.s;
   markNav(); renderBadges();
 }
 const markNav = () => { const p = location.hash.replace(/^#\/?/, '').split('/')[0]; $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === p)); };
@@ -36,6 +39,9 @@ async function route() {
   const [pathPart, query = ''] = location.hash.replace(/^#\/?/, '').split('?'); const [path, ...rest] = pathPart.split('/'); const arg = rest.join('/');
   markNav(); window.scrollTo(0, 0); document.body.dataset.route = path;
   const host = freshView();
+  // Customers must finish their profile (photos + bio) before using the app.
+  const FREE = ['setup', 'terms', 'privacy', 'standards', 'refunds', 'safety', 'faq', 'support', 'verify', 'reset', 'account'];
+  if (state.me && state.me.role === 'customer' && state.me.modes && !state.me.modes.hire.complete && !FREE.includes(path)) { location.hash = '#/setup'; return; }
   try {
     switch (path) {
       case '': await homePage(host); break;
@@ -46,7 +52,10 @@ async function route() {
       case 'earnings': await earningsPage(host); break;
       case 'schedule': await schedulePage(host); break;
       case 'verify-id': await kycPage(host); break;
-      case 'p': await profilePage(host, arg); break;
+      case 'p':
+        if (state.me && state.me.role === 'partner' && String(state.me.id) !== arg) { host.innerHTML = html`<div class="page narrow center"><h1>Partners can't browse partners</h1><p class="muted">Switch to Hire mode to find a companion.</p><button class="btn primary" data-action="switch-mode">Switch mode</button></div>`.s; break; }
+        await profilePage(host, arg); break;
+      case 'setup': await setupPage(host); break;
       case 'saved': await savedPage(host); break;
       case 'messages': await messagesPage(host, arg); break;
       case 'bookings': await bookingsPage(host); break;

@@ -3,7 +3,7 @@ from datetime import date
 from .config import settings
 from .db import SessionLocal
 from datetime import timedelta
-from .models import User, PartnerProfile, Booking, Review, utcnow
+from .models import User, PartnerProfile, CustomerProfile, Booking, Review, utcnow
 from .security import hash_password
 from .demo_art import save_portraits
 
@@ -27,6 +27,16 @@ PARTNERS = [
     ("Ishita", "ishita@gimble.local", date(1997, 7, 8), "female", "Gurugram", "Concert plus-one & foodie",
      "Live music, street food and trying new restaurants. Fun company for events and dinners.",
      {"Event / concert plus-one": 799, "Dinner": 649, "Shopping": 549, "Coffee date": 379}, ["English", "Hindi"], 0, 0, True),
+]
+
+
+# (name, email, dob, gender, city, bio, art=(hue, style, skin, hair))
+CUSTOMERS = [
+    ("Demo Customer", "demo@gimble.local", date(1999, 1, 1), "male", "Gurugram", "New to the city and always up for a good coffee, a football match or a weekend walk. Looking for easygoing company.", (200, "short", 2, 0)),
+    ("Neha", "neha@gimble.local", date(1997, 3, 12), "female", "Gurugram", "Software engineer who loves live music and trying new cafes. Looking for friendly company for gigs and food walks.", (300, "long", 1, 4)),
+    ("Arjun", "arjun@gimble.local", date(1995, 8, 25), "male", "Delhi", "Weekend cricketer and board-game fan. Happy to explore Delhi's food streets with good company.", (180, "short", 3, 2)),
+    ("Sana", "sana@gimble.local", date(1999, 12, 2), "female", "Mumbai", "Book lover and sea-face walker. I enjoy galleries, quiet cafes and a good conversation.", (260, "bun", 2, 1)),
+    ("Vikram", "vikram@gimble.local", date(1993, 6, 18), "male", "Gurugram", "Runner and amateur photographer. Looking for a plus-one for events and a gym buddy.", (30, "short", 1, 3)),
 ]
 
 
@@ -55,6 +65,13 @@ def seed():
                                           status="approved", verified=name in ("Aanya", "Meera"), rating=rating,
                                           review_count=n, submitted_at=utcnow()))
         db.commit()
+        if settings.SEED_DEMO:
+            for name, email, dob, gender, city, bio, art in CUSTOMERS:
+                u = _ensure_user(db, name, email, dob, gender, city, "customer", DEMO_PW)
+                if not db.query(CustomerProfile).filter_by(user_id=u.id).first():
+                    photos = save_portraits(settings.UPLOAD_DIR, u.id, *art) if settings.STORAGE_BACKEND == "local" else []
+                    db.add(CustomerProfile(user_id=u.id, bio=bio, photos_json=json.dumps(photos), status="approved" if photos else "draft", submitted_at=utcnow()))
+            db.commit()
         if settings.SEED_DEMO and settings.STORAGE_BACKEND == "local":  # illustrated placeholder portraits for demo partners without photos
             for name, (hue, style, skin, hair) in ART.items():
                 u = db.query(User).filter_by(name=name, role="partner").first()

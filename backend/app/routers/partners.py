@@ -32,6 +32,12 @@ def _own_profile(db: Session, u: User) -> PartnerProfile:
     return p
 
 
+def _customers_only(viewer: User | None, partner_id: int | None = None):
+    """In 'Get hired' mode you see customers, not other partners (use Hire mode to browse partners)."""
+    if viewer and viewer.role == "partner" and viewer.id != partner_id:
+        raise HTTPException(403, "Partners can't browse other partners. Switch to Hire mode to find a companion.")
+
+
 @router.get("/meta")
 def meta():
     return {"activity_suggestions": ACTIVITY_SUGGESTIONS, "min_rate": MIN_RATE, "max_rate": MAX_RATE,
@@ -54,6 +60,7 @@ def list_partners(city: str | None = None, activity: str | None = None, q: str |
                   min_rating: float | None = None, available: bool | None = None,
                   sort: str = "relevance", limit: int = 24, offset: int = 0,
                   viewer: User | None = Depends(optional_user), db: Session = Depends(get_db)):
+    _customers_only(viewer)
     limit = max(1, min(limit, 60))
     qs = (db.query(PartnerProfile).join(User, User.id == PartnerProfile.user_id)
           .filter(PartnerProfile.status == "approved", User.active.is_(True)))
@@ -98,6 +105,7 @@ def list_partners(city: str | None = None, activity: str | None = None, q: str |
 
 @router.get("/partners/{partner_id}")
 def get_partner(partner_id: int, viewer: User | None = Depends(optional_user), db: Session = Depends(get_db)):
+    _customers_only(viewer, partner_id)
     p = (db.query(PartnerProfile).join(User, User.id == PartnerProfile.user_id)
          .filter(User.id == partner_id, PartnerProfile.status == "approved", User.active.is_(True)).first())
     if not p or (viewer and partner_id in blocked_ids(db, viewer.id)):
@@ -207,7 +215,8 @@ def set_availability(x: AvailabilityIn, u: User = Depends(current_user), db: Ses
 
 @router.post("/uploads/photo")
 async def upload_photo(file: UploadFile = File(...), u: User = Depends(current_user)):
-    _partner_user(u)
+    if u.role not in ("partner", "customer"):
+        raise HTTPException(403, "Photo uploads are for customer and partner profiles")
     data = await file.read(settings.MAX_UPLOAD_BYTES + 1)
     if len(data) > settings.MAX_UPLOAD_BYTES:
         raise HTTPException(413, f"Photo must be under {settings.MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
